@@ -30,6 +30,7 @@
 build/
 .vscode/
 .idea/
+.theia/
 
 # OS files
 .DS_Store

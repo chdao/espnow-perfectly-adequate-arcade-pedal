@@ -33,12 +33,16 @@ typedef struct __attribute__((packed)) struct_message {
 } struct_message;
 
 unsigned long lastActivityTime = 0;  // Last activity timestamp
-bool lastleftPEDALState = HIGH;  // Last state of LEFT PEDAL
-bool lastrightPEDALState = HIGH;  // Last state of RIGHT PEDAL
-unsigned long leftDebounceTime = 0;  // When LEFT pedal debounce started
-unsigned long rightDebounceTime = 0;  // When RIGHT pedal debounce started
-bool leftDebouncing = false;  // Is LEFT pedal currently debouncing
-bool rightDebouncing = false;  // Is RIGHT pedal currently debouncing
+
+// Pedal state tracking structure
+struct PedalState {
+  bool lastState;
+  unsigned long debounceTime;
+  bool debouncing;
+};
+
+PedalState leftPedal = {HIGH, 0, false};
+PedalState rightPedal = {HIGH, 0, false};
 
 // ESPNOW peer address - MUST match the receiver's MAC address
 // Receiver MAC: a0:85:e3:e0:8e:a8
@@ -100,147 +104,78 @@ void setup() {
   lastActivityTime = millis();
 }
 
-void loop() {
-  // Read the current state of Pedal(s)
-  bool currentleftPEDALState, currentrightPEDALState;
-  if (PEDAL_MODE == DUAL_PEDAL) {
-    currentleftPEDALState = digitalRead(DUAL_LEFT_PIN);
-    currentrightPEDALState = digitalRead(DUAL_RIGHT_PIN);
-  } else {
-    // In single pedal mode, read from SINGLE_PEDAL_PIN
-    bool singlePedalState = digitalRead(SINGLE_PEDAL_PIN);
-    if (PEDAL_MODE == SINGLE_PEDAL_1) {
-      currentleftPEDALState = singlePedalState;
-      currentrightPEDALState = HIGH;  // Not used
-    } else {  // SINGLE_PEDAL_2
-      currentleftPEDALState = HIGH;  // Not used
-      currentrightPEDALState = singlePedalState;
+// Helper function to handle pedal state changes
+void handlePedal(uint8_t pin, PedalState& pedal, char key, const char* pedalName) {
+  bool currentState = digitalRead(pin);
+  unsigned long currentTime = millis();
+  
+  if (currentState == LOW && pedal.lastState == HIGH) {
+    // Pressed - start debounce
+    if (!pedal.debouncing) {
+      pedal.debounceTime = currentTime;
+      pedal.debouncing = true;
+    } else if (currentTime - pedal.debounceTime >= DEBOUNCE_DELAY) {
+      // Debounce complete, verify still LOW
+      if (digitalRead(pin) == LOW) {
+        sendPedalEvent(key, true, pedalName);
+        pedal.lastState = LOW;
+        resetInactivityTimer();
+      }
+      pedal.debouncing = false;
     }
+  } else if (currentState == HIGH && pedal.lastState == LOW) {
+    // Released - send immediately
+    sendPedalEvent(key, false, pedalName);
+    pedal.lastState = HIGH;
+    pedal.debouncing = false;
+    resetInactivityTimer();
+  } else if (currentState == HIGH && pedal.debouncing) {
+    // Bounced back to HIGH during debounce - cancel
+    pedal.debouncing = false;
   }
+}
 
-  // Turn ON Power LED  LOW = OFF, HIGH = ON  Note:  Turning on LED will reduce battery life
-  digitalWrite(LED_PIN, LOW);
+// Helper function to send ESP-NOW message
+void sendPedalEvent(char key, bool pressed, const char* pedalName) {
+  struct_message msg;
+  msg.key = key;
+  msg.pressed = pressed;
+  
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&msg, sizeof(msg));
+  if (result == ESP_OK) {
+    Serial.print("Sent ");
+    Serial.print(pedalName);
+    Serial.println(pressed ? " PRESS" : " RELEASE");
+  } else {
+    Serial.print("Error sending ");
+    Serial.print(pedalName);
+    Serial.print(pressed ? " PRESS: " : " RELEASE: ");
+    Serial.println(result);
+  }
+}
 
+void loop() {
   // Handle inactivity timeout
   if (millis() - lastActivityTime > INACTIVITY_TIMEOUT) {
     Serial.println("Inactivity timeout. Going to deep sleep.");
     goToDeepSleep();
   }
 
-  unsigned long currentTime = millis();
-  
-  // LEFT PEDAL handling - pin 13 sends as LEFT pedal (pedal ID 0)
-  // Active in DUAL_PEDAL mode or SINGLE_PEDAL_1 mode
+  // Turn OFF LED (LOW = OFF)
+  digitalWrite(LED_PIN, LOW);
+
+  // Handle LEFT pedal (active in DUAL_PEDAL or SINGLE_PEDAL_1 mode)
   if (PEDAL_MODE == DUAL_PEDAL || PEDAL_MODE == SINGLE_PEDAL_1) {
-    if (currentleftPEDALState == LOW && lastleftPEDALState == HIGH) {
-      // State changed from HIGH to LOW (pressed) - start debounce
-      if (!leftDebouncing) {
-        leftDebounceTime = currentTime;
-        leftDebouncing = true;
-      } else if (currentTime - leftDebounceTime >= DEBOUNCE_DELAY) {
-        // Debounce time passed, check if still LOW
-        uint8_t pinToRead = (PEDAL_MODE == DUAL_PEDAL) ? DUAL_LEFT_PIN : SINGLE_PEDAL_PIN;
-        if (digitalRead(pinToRead) == LOW) {
-          // Send PRESS event with key character
-          struct_message msg;
-          msg.key = LEFT_PEDAL_KEY;  // 'l'
-          msg.pressed = true;
-          esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&msg, sizeof(msg));
-          if (result == ESP_OK) {
-            Serial.println("Sent LEFT pedal PRESS");
-          } else {
-            Serial.print("Error sending LEFT pedal PRESS: ");
-            Serial.println(result);
-          }
-          lastleftPEDALState = LOW;
-          resetInactivityTimer();
-        }
-        leftDebouncing = false;
-      }
-    } else if (currentleftPEDALState == HIGH && lastleftPEDALState == LOW) {
-      // State changed from LOW to HIGH (released) - send release event
-      struct_message msg;
-      msg.key = LEFT_PEDAL_KEY;  // 'l'
-      msg.pressed = false;
-      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&msg, sizeof(msg));
-      if (result == ESP_OK) {
-        Serial.println("Sent LEFT pedal RELEASE");
-      } else {
-        Serial.print("Error sending LEFT pedal RELEASE: ");
-        Serial.println(result);
-      }
-      lastleftPEDALState = HIGH;
-      leftDebouncing = false;
-      resetInactivityTimer();
-    } else if (currentleftPEDALState == HIGH && leftDebouncing) {
-      // Bounced back to HIGH during debounce - cancel
-      leftDebouncing = false;
-    }
+    uint8_t pin = (PEDAL_MODE == DUAL_PEDAL) ? DUAL_LEFT_PIN : SINGLE_PEDAL_PIN;
+    handlePedal(pin, leftPedal, LEFT_PEDAL_KEY, "LEFT pedal");
   }
   
-  // RIGHT PEDAL handling
-  // In DUAL_PEDAL mode: pin 14 sends as RIGHT pedal (pedal ID 1)
-  // In SINGLE_PEDAL_2 mode: pin 13 sends as RIGHT pedal (pedal ID 1)
+  // Handle RIGHT pedal (active in DUAL_PEDAL or SINGLE_PEDAL_2 mode)
   if (PEDAL_MODE == DUAL_PEDAL || PEDAL_MODE == SINGLE_PEDAL_2) {
-    // In SINGLE_PEDAL_2 mode, currentrightPEDALState contains SINGLE_PEDAL_PIN state
-    // In DUAL_PEDAL mode, currentrightPEDALState contains DUAL_RIGHT_PIN state
-    bool pedalState = currentrightPEDALState;
-    bool lastPedalState = (PEDAL_MODE == DUAL_PEDAL) ? lastrightPEDALState : lastleftPEDALState;
-    
-    if (pedalState == LOW && lastPedalState == HIGH) {
-      // State changed from HIGH to LOW (pressed) - start debounce
-      if (!rightDebouncing) {
-        rightDebounceTime = currentTime;
-        rightDebouncing = true;
-      } else if (currentTime - rightDebounceTime >= DEBOUNCE_DELAY) {
-        // Debounce time passed, check if still LOW
-        uint8_t pinToRead = (PEDAL_MODE == DUAL_PEDAL) ? DUAL_RIGHT_PIN : SINGLE_PEDAL_PIN;
-        if (digitalRead(pinToRead) == LOW) {
-          // Send PRESS event with key character
-          struct_message msg;
-          msg.key = RIGHT_PEDAL_KEY;  // 'r'
-          msg.pressed = true;
-          esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&msg, sizeof(msg));
-          if (result == ESP_OK) {
-            Serial.println("Sent RIGHT pedal PRESS");
-          } else {
-            Serial.print("Error sending RIGHT pedal PRESS: ");
-            Serial.println(result);
-          }
-          // Update the appropriate state variable
-          if (PEDAL_MODE == DUAL_PEDAL) {
-            lastrightPEDALState = LOW;
-          } else {
-            lastleftPEDALState = LOW;
-          }
-          resetInactivityTimer();
-        }
-        rightDebouncing = false;
-      }
-    } else if (pedalState == HIGH && lastPedalState == LOW) {
-      // State changed from LOW to HIGH (released) - send release event
-      struct_message msg;
-      msg.key = RIGHT_PEDAL_KEY;  // 'r'
-      msg.pressed = false;
-      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&msg, sizeof(msg));
-      if (result == ESP_OK) {
-        Serial.println("Sent RIGHT pedal RELEASE");
-      } else {
-        Serial.print("Error sending RIGHT pedal RELEASE: ");
-        Serial.println(result);
-      }
-      // Update the appropriate state variable
-      if (PEDAL_MODE == DUAL_PEDAL) {
-        lastrightPEDALState = HIGH;
-      } else {
-        lastleftPEDALState = HIGH;
-      }
-      rightDebouncing = false;
-      resetInactivityTimer();
-    } else if (pedalState == HIGH && rightDebouncing) {
-      // Bounced back to HIGH during debounce - cancel
-      rightDebouncing = false;
-    }
+    uint8_t pin = (PEDAL_MODE == DUAL_PEDAL) ? DUAL_RIGHT_PIN : SINGLE_PEDAL_PIN;
+    // In SINGLE_PEDAL_2 mode, use leftPedal state tracking since it's the same pin
+    PedalState& pedalState = (PEDAL_MODE == DUAL_PEDAL) ? rightPedal : leftPedal;
+    handlePedal(pin, pedalState, RIGHT_PEDAL_KEY, "RIGHT pedal");
   }
 }
 

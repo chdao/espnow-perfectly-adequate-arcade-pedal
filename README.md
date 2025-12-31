@@ -43,25 +43,36 @@ This project consists of:
 
 ## Setup Instructions
 
-### 1. Configure Transmitter
+### 1. Configure Receiver First
 
-Open `transmitter/transmitter.ino` and set:
+1. Upload `receiver/receiver.ino` to your ESP32-S2/S3
+2. Open Serial Monitor at 115200 baud
+3. **Important**: Note the MAC address displayed (e.g., `a0:85:e3:e0:8e:a8`)
+   - The receiver will print: `MAC Address: a0:85:e3:e0:8e:a8`
+   - **You need this MAC address for the transmitter configuration**
 
+### 2. Configure Transmitter
+
+Open `transmitter/transmitter.ino` and make these changes:
+
+**Set the pedal mode:**
 ```cpp
 #define PEDAL_MODE 0  // 0 = DUAL_PEDAL, 1 = SINGLE_PEDAL_1, 2 = SINGLE_PEDAL_2
 ```
 
-Update the receiver MAC address:
+**Update the receiver MAC address (around line 45):**
 ```cpp
-uint8_t broadcastAddress[] = {0xa0, 0x85, 0xe3, 0xe0, 0x8e, 0xa8};  // Your receiver's MAC
+// ESPNOW peer address - MUST match the receiver's MAC address
+// Receiver MAC: a0:85:e3:e0:8e:a8
+uint8_t broadcastAddress[] = {0xa0, 0x85, 0xe3, 0xe0, 0x8e, 0xa8};
 ```
 
-### 2. Configure Receiver
+**How to convert MAC address format:**
+- If your receiver shows: `a0:85:e3:e0:8e:a8`
+- Convert to hex bytes: `{0xa0, 0x85, 0xe3, 0xe0, 0x8e, 0xa8}`
+- Replace the values in the `broadcastAddress` array with your receiver's MAC address
 
-1. Upload `receiver/receiver.ino` to your ESP32-S2/S3
-2. Open Serial Monitor at 115200 baud
-3. Note the MAC address displayed
-4. Update the MAC address in the transmitter code
+**⚠️ CRITICAL**: The transmitter will NOT work unless the MAC address matches your receiver's MAC address exactly!
 
 ### 3. Customize Keys
 

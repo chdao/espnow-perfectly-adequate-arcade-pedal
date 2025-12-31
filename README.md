@@ -5,8 +5,10 @@ A wireless pedal system using ESP-NOW for low-latency communication between peda
 ## Overview
 
 This project consists of:
-- **Transmitter**: ESP32-based pedal device that sends key press/release events via ESP-NOW
-- **Receiver**: ESP32-S2/S3 device that receives ESP-NOW messages and types keys via USB HID Keyboard
+- **Transmitter**: ESP32-based pedal device that sends key press/release events via ESP-NOW (`transmitter/transmitter.ino`)
+- **Receiver**: ESP32-S2/S3 device that receives ESP-NOW messages and types keys via USB HID Keyboard (`receiver/receiver.ino`)
+
+**Note**: `espnow-pedal.cpp` is included as a reference file showing the original implementation. The actual project files are in the `transmitter/` and `receiver/` directories.
 
 ## Features
 

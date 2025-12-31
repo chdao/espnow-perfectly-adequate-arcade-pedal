@@ -46,12 +46,7 @@ void setup() {
   
   for (int i = 0; i < 6; i++) {
     Serial.print("0x");
-    if (mac[i] < 0x10) Serial.print("0");
-    // Print in lowercase hex to match transmitter format
-    char hexChar = (mac[i] & 0xF0) >> 4;
-    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
-    hexChar = mac[i] & 0x0F;
-    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
+    printHexLowercase(mac[i]);
     if (i < 5) Serial.print(", ");
   }
   Serial.println("};");
@@ -62,11 +57,7 @@ void setup() {
   Serial.print("{");
   for (int i = 0; i < 6; i++) {
     Serial.print("0x");
-    if (mac[i] < 0x10) Serial.print("0");
-    char hexChar = (mac[i] & 0xF0) >> 4;
-    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
-    hexChar = mac[i] & 0x0F;
-    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
+    printHexLowercase(mac[i]);
     if (i < 5) Serial.print(", ");
   }
   Serial.println("}");

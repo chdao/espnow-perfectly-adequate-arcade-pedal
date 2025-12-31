@@ -8,6 +8,15 @@
 
 #include <WiFi.h>
 
+// Helper function to print byte as lowercase hex
+void printHexLowercase(uint8_t value) {
+  if (value < 0x10) Serial.print("0");
+  // Convert to lowercase hex
+  char hexChars[] = "0123456789abcdef";
+  Serial.print(hexChars[(value >> 4) & 0x0F]);
+  Serial.print(hexChars[value & 0x0F]);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(2000); // Give Serial time to initialize
@@ -27,24 +36,41 @@ void setup() {
   Serial.println(macAddress);
   Serial.println();
   
-  // Also display in hex format for easy copy-paste
-  Serial.println("For transmitter configuration, use this format:");
-  Serial.print("uint8_t broadcastAddress[] = {");
-  
+  // Get MAC address as bytes
   uint8_t mac[6];
   WiFi.macAddress(mac);
+  
+  // Display in exact format needed for transmitter (lowercase hex)
+  Serial.println("Copy this line to transmitter/transmitter.ino (around line 45):");
+  Serial.print("uint8_t broadcastAddress[] = {");
   
   for (int i = 0; i < 6; i++) {
     Serial.print("0x");
     if (mac[i] < 0x10) Serial.print("0");
-    Serial.print(mac[i], HEX);
+    // Print in lowercase hex to match transmitter format
+    char hexChar = (mac[i] & 0xF0) >> 4;
+    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
+    hexChar = mac[i] & 0x0F;
+    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
     if (i < 5) Serial.print(", ");
   }
   Serial.println("};");
   Serial.println();
-  Serial.println("========================================");
-  Serial.println("Copy the MAC address above and update");
-  Serial.println("transmitter/transmitter.ino line ~45");
+  
+  // Also show just the values for easy copy-paste
+  Serial.println("Or copy just the values:");
+  Serial.print("{");
+  for (int i = 0; i < 6; i++) {
+    Serial.print("0x");
+    if (mac[i] < 0x10) Serial.print("0");
+    char hexChar = (mac[i] & 0xF0) >> 4;
+    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
+    hexChar = mac[i] & 0x0F;
+    Serial.print((char)(hexChar < 10 ? '0' + hexChar : 'a' + hexChar - 10));
+    if (i < 5) Serial.print(", ");
+  }
+  Serial.println("}");
+  Serial.println();
   Serial.println("========================================");
 }
 

@@ -8,10 +8,8 @@
 
 #include <WiFi.h>
 
-// Helper function to print byte as lowercase hex
+// Helper function to print byte as lowercase hex (e.g., 0xa0, 0x05)
 void printHexLowercase(uint8_t value) {
-  if (value < 0x10) Serial.print("0");
-  // Convert to lowercase hex
   char hexChars[] = "0123456789abcdef";
   Serial.print(hexChars[(value >> 4) & 0x0F]);
   Serial.print(hexChars[value & 0x0F]);

@@ -1,15 +1,18 @@
 /*
- * Run This First - Get Receiver MAC Address
+ * Get Receiver MAC Address
  * 
  * Upload this sketch to your ESP32-S2/S3 receiver first to get its MAC address.
  * The MAC address will be displayed in the Serial Monitor.
  * Copy this MAC address and update it in transmitter/transmitter.ino
+ * 
+ * NOTE: This is a helper sketch. After getting the MAC address, upload receiver/receiver.ino
  */
 
 #include <WiFi.h>
 
-// Helper function to print byte as lowercase hex (e.g., 0xa0, 0x05)
+// Helper function to print byte as lowercase hex
 void printHexLowercase(uint8_t value) {
+  // Convert to lowercase hex
   char hexChars[] = "0123456789abcdef";
   Serial.print(hexChars[(value >> 4) & 0x0F]);
   Serial.print(hexChars[value & 0x0F]);
@@ -61,6 +64,11 @@ void setup() {
   Serial.println("}");
   Serial.println();
   Serial.println("========================================");
+  Serial.println();
+  Serial.println("NOTE: With the new auto-discovery feature,");
+  Serial.println("you no longer need to manually configure");
+  Serial.println("the MAC address in the transmitter!");
+  Serial.println("This sketch is kept for reference.");
 }
 
 void loop() {

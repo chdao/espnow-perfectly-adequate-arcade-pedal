@@ -18,17 +18,20 @@ typedef struct __attribute__((packed)) struct_message {
 #define MSG_PEDAL_EVENT    0x00
 #define MSG_DISCOVERY_REQ  0x01
 #define MSG_DISCOVERY_RESP 0x02
+#define MSG_ALIVE          0x03
 
 #define MAX_PEDAL_SLOTS 2
 #define BEACON_INTERVAL 2000
 #define TRANSMITTER_TIMEOUT 30000  // 30 seconds
+#define ALIVE_INTERVAL 30000  // 30 seconds - send alive messages to paired transmitters (configurable)
 
 uint8_t pairedTransmitters[2][6] = {{0}, {0}};
 uint8_t transmitterPedalModes[2] = {0, 0};
-unsigned long transmitterLastSeen[2] = {0, 0};
+bool transmitterSeenOnBoot[2] = {false, false};  // Track if EEPROM-loaded transmitters sent discovery
 int pairedCount = 0;
 int pedalSlotsUsed = 0;
 unsigned long lastBeaconTime = 0;
+unsigned long lastAliveTime = 0;
 unsigned long bootTime = 0;
 uint8_t broadcastMAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 bool keysPressed[256];
@@ -89,7 +92,7 @@ void loadPairingState() {
       pairedTransmitters[i][j] = preferences.getUChar(key, 0);
     }
     transmitterPedalModes[i] = preferences.getUChar(modeKey, 0);
-    transmitterLastSeen[i] = 0;
+    transmitterSeenOnBoot[i] = false;  // Mark as not seen yet - waiting for discovery message
   }
   
   preferences.end();
@@ -103,7 +106,7 @@ void removeTransmitter(int index) {
   for (int i = index; i < pairedCount - 1; i++) {
     memcpy(pairedTransmitters[i], pairedTransmitters[i + 1], 6);
     transmitterPedalModes[i] = transmitterPedalModes[i + 1];
-    transmitterLastSeen[i] = transmitterLastSeen[i + 1];
+    transmitterSeenOnBoot[i] = transmitterSeenOnBoot[i + 1];
   }
   
   pairedCount--;
@@ -111,7 +114,7 @@ void removeTransmitter(int index) {
   
   memset(pairedTransmitters[pairedCount], 0, 6);
   transmitterPedalModes[pairedCount] = 0;
-  transmitterLastSeen[pairedCount] = 0;
+  transmitterSeenOnBoot[pairedCount] = false;
   
   savePairingState();
 }
@@ -119,7 +122,8 @@ void removeTransmitter(int index) {
 bool addTransmitter(const uint8_t* mac, uint8_t pedalMode) {
   int index = getTransmitterIndex(mac);
   if (index >= 0) {
-    transmitterLastSeen[index] = millis();
+    // Already paired - mark as seen on boot if it was loaded from EEPROM
+    transmitterSeenOnBoot[index] = true;
     return true;
   }
   
@@ -130,7 +134,7 @@ bool addTransmitter(const uint8_t* mac, uint8_t pedalMode) {
   
   memcpy(pairedTransmitters[pairedCount], mac, 6);
   transmitterPedalModes[pairedCount] = pedalMode;
-  transmitterLastSeen[pairedCount] = millis();
+  transmitterSeenOnBoot[pairedCount] = true;  // New transmitter - mark as seen
   pairedCount++;
   pedalSlotsUsed += slotsNeeded;
   
@@ -145,6 +149,17 @@ void sendAvailabilityBeacon() {
   esp_now_send(broadcastMAC, (uint8_t*)&beacon, sizeof(beacon));
 }
 
+void sendAliveMessages() {
+  if (pairedCount == 0) return;
+  
+  struct_message alive = {MSG_ALIVE, 0, false, 0};
+  
+  // Send alive message to all paired transmitters
+  for (int i = 0; i < pairedCount; i++) {
+    esp_now_send(pairedTransmitters[i], (uint8_t*)&alive, sizeof(alive));
+  }
+}
+
 void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
   if (len < sizeof(struct_message)) return;
   
@@ -153,6 +168,19 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
   
   switch (msg.msgType) {
     case MSG_DISCOVERY_REQ: {
+      // Check if this is a known transmitter (from EEPROM)
+      int knownIndex = getTransmitterIndex(esp_now_info->src_addr);
+      bool isKnownTransmitter = (knownIndex >= 0);
+      
+      // If receiver is full and within first 30 seconds, only respond to known transmitters
+      unsigned long timeSinceBoot = millis() - bootTime;
+      if (pedalSlotsUsed >= MAX_PEDAL_SLOTS && timeSinceBoot < TRANSMITTER_TIMEOUT) {
+        if (!isKnownTransmitter) {
+          // Ignore unknown transmitters during the 30-second grace period
+          break;
+        }
+      }
+      
       int slotsNeeded = (msg.pedalMode == 0) ? 2 : 1;
       
       if (pedalSlotsUsed + slotsNeeded <= MAX_PEDAL_SLOTS) {
@@ -166,8 +194,6 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
     case MSG_PEDAL_EVENT: {
       int transmitterIndex = getTransmitterIndex(esp_now_info->src_addr);
       if (transmitterIndex < 0) break;
-      
-      transmitterLastSeen[transmitterIndex] = millis();
       
       char keyToPress;
       if (transmitterPedalModes[transmitterIndex] == 0) {
@@ -234,14 +260,13 @@ void setup() {
 }
 
 void loop() {
-  // Check for unresponsive transmitters after timeout period
-  if (millis() - bootTime > TRANSMITTER_TIMEOUT) {
+  // Check for unresponsive transmitters from EEPROM (only within 30 seconds of boot)
+  unsigned long timeSinceBoot = millis() - bootTime;
+  if (timeSinceBoot > TRANSMITTER_TIMEOUT && timeSinceBoot < TRANSMITTER_TIMEOUT + 1000) {
+    // One-time check after 30 seconds - remove transmitters that never sent discovery
     for (int i = pairedCount - 1; i >= 0; i--) {
-      unsigned long timeSinceSeen = (transmitterLastSeen[i] == 0) 
-        ? (millis() - bootTime) 
-        : (millis() - transmitterLastSeen[i]);
-      
-      if (timeSinceSeen > TRANSMITTER_TIMEOUT) {
+      if (!transmitterSeenOnBoot[i]) {
+        // Transmitter was loaded from EEPROM but never sent discovery message
         removeTransmitter(i);
       }
     }
@@ -251,6 +276,12 @@ void loop() {
   if (pedalSlotsUsed < MAX_PEDAL_SLOTS && (millis() - lastBeaconTime > BEACON_INTERVAL)) {
     sendAvailabilityBeacon();
     lastBeaconTime = millis();
+  }
+  
+  // Send alive messages to paired transmitters every 20 seconds
+  if (pairedCount > 0 && (millis() - lastAliveTime > ALIVE_INTERVAL)) {
+    sendAliveMessages();
+    lastAliveTime = millis();
   }
   
   delay(10);

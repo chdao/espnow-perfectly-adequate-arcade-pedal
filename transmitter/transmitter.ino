@@ -30,6 +30,7 @@ typedef struct __attribute__((packed)) struct_message {
 #define MSG_PEDAL_EVENT    0x00
 #define MSG_DISCOVERY_REQ  0x01
 #define MSG_DISCOVERY_RESP 0x02
+#define MSG_ALIVE          0x03
 
 uint8_t pairedReceiverMAC[6] = {0};
 bool isPaired = false;
@@ -37,9 +38,15 @@ bool discoveryMode = false;
 unsigned long discoveryStartTime = 0;
 unsigned long lastDiscoverySend = 0;
 unsigned long lastActivityTime = 0;
+unsigned long lastAliveReceived = 0;
+int reconnectAttempts = 0;
 
+// Configurable intervals (adjust for battery life vs responsiveness)
 #define DISCOVERY_TIMEOUT 10000
-#define DISCOVERY_SEND_INTERVAL 500
+#define DISCOVERY_SEND_INTERVAL 500  // Initial discovery interval (fast for first boot)
+#define DISCOVERY_RECONNECT_INTERVAL 5000  // Base reconnection interval (5 seconds)
+#define DISCOVERY_RECONNECT_MAX_INTERVAL 30000  // Max reconnection interval (30 seconds)
+#define ALIVE_TIMEOUT 35000  // 35 seconds - restart discovery if no message from receiver (should be > ALIVE_INTERVAL on receiver)
 uint8_t broadcastMAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 struct PedalState {
@@ -52,32 +59,46 @@ PedalState pedal1State = {HIGH, 0, false};
 PedalState pedal2State = {HIGH, 0, false};
 
 void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-  if (len < sizeof(struct_message) || !discoveryMode) return;
+  if (len < sizeof(struct_message)) return;
   
   struct_message msg;
   memcpy(&msg, data, len);
   
-  if (msg.msgType == MSG_DISCOVERY_RESP) {
-    memcpy(pairedReceiverMAC, info->src_addr, 6);
-    isPaired = true;
-    discoveryMode = false;
-    
-    esp_now_unregister_recv_cb();
-    
-    esp_now_peer_info_t peerInfo = {};
-    memcpy(peerInfo.peer_addr, pairedReceiverMAC, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
-    esp_now_add_peer(&peerInfo);
-    
-    Serial.print("Paired: ");
-    for (int i = 0; i < 6; i++) {
-      Serial.print(pairedReceiverMAC[i], HEX);
-      if (i < 5) Serial.print(":");
+  if (discoveryMode) {
+    // Only handle discovery responses during discovery mode
+    if (msg.msgType == MSG_DISCOVERY_RESP) {
+      memcpy(pairedReceiverMAC, info->src_addr, 6);
+      isPaired = true;
+      discoveryMode = false;
+      
+      esp_now_unregister_recv_cb();
+      
+      esp_now_peer_info_t peerInfo = {};
+      memcpy(peerInfo.peer_addr, pairedReceiverMAC, 6);
+      peerInfo.channel = 0;
+      peerInfo.encrypt = false;
+      esp_now_add_peer(&peerInfo);
+      
+      // Re-register callback to receive alive messages
+      esp_now_register_recv_cb(OnDataRecv);
+      
+      Serial.print("Paired: ");
+      for (int i = 0; i < 6; i++) {
+        Serial.print(pairedReceiverMAC[i], HEX);
+        if (i < 5) Serial.print(":");
+      }
+      Serial.println();
+      
+      lastAliveReceived = millis();
+      reconnectAttempts = 0;  // Reset reconnect attempts on successful pairing
+      digitalWrite(LED_PIN, HIGH);
     }
-    Serial.println();
-    
-    digitalWrite(LED_PIN, HIGH);
+  } else if (isPaired) {
+    // Handle any message from receiver as implicit heartbeat (pedal events, alive messages, etc.)
+    if (memcmp(info->src_addr, pairedReceiverMAC, 6) == 0) {
+      lastAliveReceived = millis();
+      reconnectAttempts = 0;  // Reset reconnect attempts on successful communication
+    }
   }
 }
 
@@ -90,6 +111,9 @@ void startDiscovery() {
   discoveryMode = true;
   discoveryStartTime = millis();
   lastDiscoverySend = 0;
+  
+  // Remove existing receiver peer if any
+  esp_now_del_peer(pairedReceiverMAC);
   
   esp_now_register_recv_cb(OnDataRecv);
   
@@ -172,12 +196,49 @@ void setup() {
 }
 
 void loop() {
+  // Check if we've lost connection (no message from receiver for ALIVE_TIMEOUT)
+  if (isPaired && !discoveryMode) {
+    if (millis() - lastAliveReceived > ALIVE_TIMEOUT) {
+      Serial.println("Lost connection - restarting discovery");
+      isPaired = false;
+      reconnectAttempts++;
+      startDiscovery();
+    }
+  }
+  
   if (discoveryMode) {
+    // Determine discovery interval based on whether we're reconnecting
+    uint8_t zeroMAC[6] = {0, 0, 0, 0, 0, 0};
+    bool isReconnecting = (memcmp(pairedReceiverMAC, zeroMAC, 6) != 0);
+    
+    unsigned long interval;
+    if (isReconnecting) {
+      // Exponential backoff: 5s, 10s, 20s, 30s (max)
+      unsigned long backoffInterval = DISCOVERY_RECONNECT_INTERVAL * (1 << (reconnectAttempts - 1));
+      interval = (backoffInterval > DISCOVERY_RECONNECT_MAX_INTERVAL) 
+                 ? DISCOVERY_RECONNECT_MAX_INTERVAL 
+                 : backoffInterval;
+    } else {
+      // First boot: use fast interval
+      interval = DISCOVERY_SEND_INTERVAL;
+    }
+    
+    // Check for timeout - if reconnecting, keep trying; if first boot, give up after timeout
     if (millis() - discoveryStartTime > DISCOVERY_TIMEOUT) {
-      Serial.println("Discovery timeout");
-      discoveryMode = false;
-      digitalWrite(LED_PIN, LOW);
-    } else if (millis() - lastDiscoverySend > DISCOVERY_SEND_INTERVAL) {
+      if (isReconnecting) {
+        // Keep trying with exponential backoff - reset timer for next attempt
+        Serial.println("Discovery timeout - retrying with backoff");
+        discoveryStartTime = millis();
+        lastDiscoverySend = 0;  // Allow immediate retry with new interval
+      } else {
+        // First boot timeout - give up to save battery
+        Serial.println("Discovery timeout - no receiver found");
+        discoveryMode = false;
+        digitalWrite(LED_PIN, LOW);
+      }
+    }
+    
+    if (discoveryMode && millis() - lastDiscoverySend > interval) {
       sendDiscoveryRequest();
       lastDiscoverySend = millis();
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));

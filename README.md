@@ -50,6 +50,8 @@ This project consists of:
   - RIGHT pedal: GPIO 14
 - **LED**: GPIO 2 (optional)
 
+**Pinout Reference**: See [FireBeetle 2 ESP32-E Pinout](docs/FireBeetle2_ESP32-E_Pinout.md) for complete pin details.
+
 ### Receiver
 - Uses USB for communication (no GPIO pins needed for functionality)
 

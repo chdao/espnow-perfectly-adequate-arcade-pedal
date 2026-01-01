@@ -84,12 +84,11 @@ Left Pedal Switch (COM) ───> GND
 Right Pedal Switch (NO)  ───> GPIO 14 (dual mode only)
 Right Pedal Switch (COM) ───> GND
 
-Mode Select Switch      ───> GPIO 26 (optional)
-Mode Select Switch      ───> GND
-
 LED (anode)            ───> GPIO 2 (optional)
 LED (cathode)          ───> GND
 ```
+
+**Note**: The original schematic may show a "Mode Select Switch" on GPIO 26 for selecting between Bluetooth and ESP-NOW modes. This code uses ESP-NOW only, so that switch is not needed. Pedal mode (single/dual) is configured via the `PEDAL_MODE` define in the code.
 
 **Note**: Switches should be normally-open (NO) type. The ESP32's internal pull-up resistors keep the pins HIGH when switches are open, and LOW when pressed.
 

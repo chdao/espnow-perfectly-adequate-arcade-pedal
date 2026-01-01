@@ -2,6 +2,8 @@
 
 This document describes the pinout for the FireBeetle 2 ESP32-E development board (ESP32-WROOM-32E module).
 
+![FireBeetle 2 ESP32-E Pinout](Firebeetle2.png)
+
 ## Power Pins
 
 - **VCC** (Red): Power input pin. Connect TP4056 OUT+ or battery here. Accepts 3.7-4.2V from battery or ~4.7V from USB.

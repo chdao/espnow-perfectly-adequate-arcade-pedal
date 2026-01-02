@@ -12,6 +12,11 @@
 #include "application/PairingService.h"
 #include "application/PedalService.h"
 
+// RTC memory for persisting pairing across deep sleep (not power cycles)
+RTC_DATA_ATTR bool rtcPaired = false;
+RTC_DATA_ATTR uint8_t rtcReceiverMAC[6] = {0};
+RTC_DATA_ATTR uint8_t rtcPedalMode = 1;
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -174,10 +179,22 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
 
 
 void goToDeepSleep() {
+  // Save pairing state to RTC memory (persists across deep sleep, not power cycles)
+  rtcPaired = pairingState.isPaired;
+  if (rtcPaired) {
+    macCopy(rtcReceiverMAC, pairingState.pairedReceiverMAC);
+    rtcPedalMode = PEDAL_MODE;
+  }
+  
   if (debugEnabled) {
-    debugPrint("Inactivity timeout - entering deep sleep\n");
+    if (rtcPaired) {
+      debugPrint("Entering deep sleep (pairing saved to RTC)\n");
+    } else {
+      debugPrint("Entering deep sleep (not paired)\n");
+    }
     delay(50);  // Give time for the message to be sent
   }
+  
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PEDAL_1_PIN, LOW);
   esp_deep_sleep_start();
 }
@@ -209,6 +226,16 @@ void setup() {
   
   // Initialize domain layer
   pairingState_init(&pairingState);
+  
+  // Restore pairing state from RTC memory if waking from deep sleep
+  if (wokeFromPedal && rtcPaired) {
+    if (debugEnabled) {
+      debugPrint("Restoring pairing from RTC memory\n");
+    }
+    pairingState.isPaired = true;
+    macCopy(pairingState.pairedReceiverMAC, rtcReceiverMAC);
+  }
+  
   pedalReader_init(&pedalReader, PEDAL_1_PIN, PEDAL_2_PIN, PEDAL_MODE);
   
   // Initialize infrastructure layer
@@ -256,8 +283,16 @@ void setup() {
   pedalService.onActivity = onActivity;
   pedalService_setPairingService(&pairingService);
   
-  // Broadcast that we're online
-  pairingService_broadcastOnline(&pairingService);
+  // If we restored pairing from RTC, add receiver as peer immediately
+  if (pairingState.isPaired && wokeFromPedal) {
+    espNowTransport_addPeer(&transport, pairingState.pairedReceiverMAC, 0);
+    if (debugEnabled) {
+      debugPrint("Restored pairing - receiver added as peer\n");
+    }
+  } else {
+    // Broadcast that we're online (only if not restored from RTC)
+    pairingService_broadcastOnline(&pairingService);
+  }
   
   // Only print startup message if debug monitor is paired
   if (debugMonitor.paired && debugMonitor.espNowInitialized) {

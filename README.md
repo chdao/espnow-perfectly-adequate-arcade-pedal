@@ -21,6 +21,10 @@ This project consists of:
 - **Press and hold**: Keys stay pressed until pedal is released
 - **Independent operation**: Both pedals can be pressed simultaneously
 - **Battery efficient**: Includes inactivity timeout and deep sleep support
+- **Automatic discovery**: No manual MAC address configuration needed - transmitters automatically discover receivers
+- **Automatic reconnection**: Transmitters automatically reconnect to receivers after reboot
+- **Slot management**: Receiver tracks available slots and only accepts transmitters when slots are available
+- **Grace period**: 30-second discovery period after receiver boot for initial pairing and verification
 
 ## Hardware Requirements
 
@@ -110,64 +114,89 @@ LED (cathode)          ───> GND
 
 **Alternative method**: Some FireBeetle boards have a BOOT button that does this automatically. If your board has a BOOT button, hold BOOT while pressing RESET, then release RESET first, then release BOOT.
 
-### 1. Get Receiver MAC Address
+### 1. Configure Transmitter
 
-**⚠️ Important**: You must use `receiver/run-this-first.ino` to get the MAC address. The main receiver sketch (`receiver/receiver.ino`) initializes USB HID Keyboard which disables Serial output, so you won't be able to see the MAC address.
+Open `transmitter/transmitter.ino` and set the pedal mode:
 
-1. Upload `receiver/run-this-first.ino` to your ESP32-S2/S3
-2. Open Serial Monitor at 115200 baud
-3. The sketch will display the MAC address in both formats:
-   - Human-readable: `a0:85:e3:e0:8e:a8`
-   - Code format ready to copy: `{0xa0, 0x85, 0xe3, 0xe0, 0x8e, 0xa8}`
-4. Copy the code format and use it in the transmitter configuration
-
-### 2. Configure Transmitter
-
-Open `transmitter/transmitter.ino` and make these changes:
-
-**Set the pedal mode:**
 ```cpp
-#define PEDAL_MODE 0  // 0 = DUAL_PEDAL, 1 = SINGLE_PEDAL_1, 2 = SINGLE_PEDAL_2
+#define PEDAL_MODE 1  // 0 = DUAL_PEDAL, 1 = SINGLE_PEDAL
 ```
 
-**Update the receiver MAC address (around line 45):**
-```cpp
-// ESPNOW peer address - MUST match the receiver's MAC address
-// Receiver MAC: a0:85:e3:e0:8e:a8
-uint8_t broadcastAddress[] = {0xa0, 0x85, 0xe3, 0xe0, 0x8e, 0xa8};
-```
+**Note**: The receiver automatically assigns keys based on pairing order:
+- First paired transmitter: LEFT pedal ('l')
+- Second paired transmitter: RIGHT pedal ('r')
+- For DUAL mode transmitters: '1' maps to 'l', '2' maps to 'r'
 
-**How to convert MAC address format:**
-- If your receiver shows: `a0:85:e3:e0:8e:a8`
-- Convert to hex bytes: `{0xa0, 0x85, 0xe3, 0xe0, 0x8e, 0xa8}`
-- Replace the values in the `broadcastAddress` array with your receiver's MAC address
+### 2. Configure Receiver
 
-**⚠️ CRITICAL**: The transmitter will NOT work unless the MAC address matches your receiver's MAC address exactly!
+The receiver requires no configuration - it automatically discovers and pairs with transmitters!
 
-### 3. Customize Keys
+**LED Status Indicator** (ESP32-S3-DevKitC-1-N16R8):
+- **Blue LED**: Receiver is in grace period (first 30 seconds after boot)
+- **LED Off**: Normal operation after grace period
 
-In `transmitter/transmitter.ino`, change the keys to send:
-```cpp
-#define LEFT_PEDAL_KEY 'l'   // Key for left pedal
-#define RIGHT_PEDAL_KEY 'r'  // Key for right pedal
-```
+### 3. Upload Code
+
+1. Upload `receiver/receiver.ino` to your ESP32-S2/S3 receiver board
+2. Upload `transmitter/transmitter.ino` to your ESP32 transmitter board(s)
+3. No MAC address configuration needed - everything is automatic!
 
 ## Usage
 
-1. Power on the receiver first
-2. Power on the transmitter(s)
-3. Press pedals to type keys
-4. Keys stay pressed until pedal is released
-5. Both pedals can be pressed simultaneously
+### Initial Pairing
+
+1. **Power on the receiver first** - The receiver will start broadcasting availability beacons
+2. **Power on the transmitter(s)** - Transmitters will automatically discover the receiver
+3. **Press a pedal** - When you press a pedal for the first time, the transmitter will automatically pair with the receiver
+4. The receiver LED will be blue during the 30-second grace period (discovery window)
+
+### Normal Operation
+
+- **Press pedals to type keys** - Keys stay pressed until pedal is released
+- **Both pedals can be pressed simultaneously** (for dual pedal mode)
+- **Automatic reconnection** - If a transmitter reboots, it will automatically reconnect to its paired receiver
+- **Slot management** - The receiver supports up to 2 pedal slots total (e.g., 2 single pedals or 1 dual pedal)
+
+### Discovery and Pairing Process
+
+**How it works:**
+1. **Receiver broadcasts beacons** during the first 30 seconds after boot, announcing its MAC address and available slots
+2. **Transmitter learns receiver MAC** from beacon messages (only stores MAC if receiver has free slots)
+3. **Transmitter sends discovery request** when pedal is pressed (if not already paired)
+4. **Receiver responds** with discovery response to complete pairing
+5. **Transmitter broadcasts pairing** so other receivers know it's taken
+
+**Automatic Reconnection:**
+- When a transmitter boots, it broadcasts its MAC address (`MSG_TRANSMITTER_ONLINE`)
+- If the receiver recognizes the transmitter (from previous pairing), it immediately sends an `MSG_ALIVE` message
+- The transmitter can then automatically reconnect without needing to press a pedal
+
+**Grace Period:**
+- First 30 seconds after receiver boot
+- Receiver broadcasts availability beacons every 2 seconds
+- Receiver pings known transmitters that haven't been seen yet
+- LED indicator shows blue during grace period
 
 ## Configuration Options
 
 ### Transmitter Settings
 
-- `PEDAL_MODE`: Pedal configuration (0=dual, 1=single left, 2=single right)
+- `PEDAL_MODE`: Pedal configuration (0=DUAL, 1=SINGLE)
 - `INACTIVITY_TIMEOUT`: Time before entering deep sleep (default: 10 minutes)
-- `DEBOUNCE_DELAY`: Debounce delay in milliseconds (default: 50ms)
-- `LEFT_PEDAL_KEY` / `RIGHT_PEDAL_KEY`: Keys to send
+- `DEBOUNCE_DELAY`: Debounce delay in milliseconds (default: 20ms)
+- `DEBUG_ENABLED`: Enable/disable Serial debug output (default: 0 for battery saving)
+- `IDLE_DELAY_PAIRED`: Delay in loop when paired (default: 100ms)
+- `IDLE_DELAY_UNPAIRED`: Delay in loop when not paired (default: 200ms)
+
+### Receiver Settings
+
+- `MAX_PEDAL_SLOTS`: Maximum number of pedal slots (default: 2)
+- `BEACON_INTERVAL`: Interval between beacon broadcasts during grace period (default: 2000ms)
+- `TRANSMITTER_TIMEOUT`: Grace period duration (default: 30000ms = 30 seconds)
+
+**Note**: Keys are automatically assigned by the receiver based on pairing order:
+- First transmitter: LEFT pedal ('l')
+- Second transmitter: RIGHT pedal ('r')
 
 ## Known Limitations
 
@@ -176,19 +205,34 @@ In `transmitter/transmitter.ino`, change the keys to send:
 
 ## Troubleshooting
 
+### Transmitter not pairing
+- **Power on receiver first** - Receiver must be broadcasting beacons
+- **Check grace period** - Pairing happens automatically during the 30-second grace period after receiver boot
+- **Check receiver slots** - Receiver may be full (2 slots already used)
+- **Press pedal** - Transmitter pairs when pedal is pressed (if receiver discovered)
+- **Enable debug** - Set `DEBUG_ENABLED 1` in transmitter to see pairing messages
+
 ### Keys not typing
-- Verify MAC address is correct in transmitter
-- Check that receiver is powered on first
-- Ensure both devices are ESP32 variants that support ESP-NOW
+- **Check pairing status** - Transmitter must be paired with receiver
+- **Verify receiver is powered on** - Receiver must be running
+- **Check slot availability** - Receiver may have reached maximum slots (2)
+- **Ensure both devices are ESP32 variants** that support ESP-NOW
+
+### Transmitter not reconnecting after reboot
+- **Wait for grace period** - Receiver sends `MSG_ALIVE` during grace period
+- **Check pairing persistence** - Receiver remembers paired transmitters across reboots
+- **Enable debug** - Check Serial output to see if `MSG_TRANSMITTER_ONLINE` is being sent/received
 
 ### Serial Monitor not working on receiver
 - This is expected when Keyboard is active on ESP32-S2/S3
 - Keyboard functionality should still work
-- Use hardware UART if Serial debugging is needed
+- Use hardware UART or debug monitor (ESP-NOW) if Serial debugging is needed
+- Debug messages are sent via ESP-NOW to a debug monitor device
 
 ### Multiple key presses
 - Adjust `DEBOUNCE_DELAY` if experiencing contact bounce
 - Check pedal switch connections
+- Default debounce delay is 20ms (optimized for most switches)
 
 ## License
 

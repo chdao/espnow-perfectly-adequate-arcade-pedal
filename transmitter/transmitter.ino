@@ -5,10 +5,10 @@
 
 // Clean Architecture: Include shared and domain modules
 #include "shared/messages.h"
+#include "shared/DebugMonitor.h"
 #include "domain/PairingState.h"
 #include "domain/PedalReader.h"
 #include "infrastructure/EspNowTransport.h"
-#include "infrastructure/DebugMonitor.h"
 #include "application/PairingService.h"
 #include "application/PedalService.h"
 
@@ -57,6 +57,15 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
 void onPaired(const uint8_t* receiverMAC);
 void onActivity();
 void debugPrint(const char* format, ...);
+
+// Transport wrapper functions for DebugMonitor
+static bool transmitterSendWrapper(void* transport, const uint8_t* mac, const uint8_t* data, int len) {
+  return espNowTransport_send((EspNowTransport*)transport, mac, data, len);
+}
+
+static bool transmitterAddPeerWrapper(void* transport, const uint8_t* mac, uint8_t channel) {
+  return espNowTransport_addPeer((EspNowTransport*)transport, mac, channel);
+}
 
 void debugPrint(const char* format, ...) {
   if (!debugEnabled) return;
@@ -190,7 +199,7 @@ void setup() {
   espNowTransport_init(&transport);
   
   // Initialize debug monitor (needed before loading debug state)
-  debugMonitor_init(&debugMonitor, &transport, bootTime);
+  debugMonitor_init(&debugMonitor, &transport, transmitterSendWrapper, transmitterAddPeerWrapper, "[T]", bootTime);
   debugMonitor_load(&debugMonitor);
   debugMonitor.espNowInitialized = transport.initialized;
   
@@ -237,8 +246,7 @@ void setup() {
   // Only print startup message if debug monitor is paired
   if (debugMonitor.paired && debugMonitor.espNowInitialized) {
     Serial.println("Debug logs are being sent to the debug monitor");
-    debugMonitor_print(&debugMonitor, "ESP-NOW initialized");
-    debugMonitor_print(&debugMonitor, "=== Transmitter Ready ===");
+    // Status messages will be sent when monitor beacon is received
   }
 }
 
@@ -315,9 +323,9 @@ void loop() {
 }
 
 // Include implementation files (Arduino IDE doesn't auto-compile .cpp files in subdirectories)
+#include "shared/DebugMonitor.cpp"
 #include "domain/PairingState.cpp"
 #include "domain/PedalReader.cpp"
 #include "infrastructure/EspNowTransport.cpp"
-#include "infrastructure/DebugMonitor.cpp"
 #include "application/PairingService.cpp"
 #include "application/PedalService.cpp"

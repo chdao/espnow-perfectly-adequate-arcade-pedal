@@ -3,8 +3,6 @@
 #include <string.h>
 #include <Arduino.h>
 #include <WiFi.h>
-#include "esp_wifi.h"
-#include "../shared/messages.h"
 #include <Preferences.h>
 
 // Helper function to remove trailing newline
@@ -16,14 +14,45 @@ static void removeTrailingNewline(char* str) {
   }
 }
 
-static Preferences preferences;
+// Helper function to check if MAC is valid (not all zeros)
+static bool isValidMAC(const uint8_t* mac) {
+  for (int i = 0; i < 6; i++) {
+    if (mac[i] != 0) return true;
+  }
+  return false;
+}
 
-void debugMonitor_init(DebugMonitor* monitor, EspNowTransport* transport, unsigned long bootTime) {
+// Helper function to copy MAC addresses
+static void macCopy(uint8_t* dest, const uint8_t* src) {
+  uint32_t* d32 = (uint32_t*)dest;
+  uint16_t* d16 = (uint16_t*)(dest + 4);
+  const uint32_t* s32 = (const uint32_t*)src;
+  const uint16_t* s16 = (const uint16_t*)(src + 4);
+  *d32 = *s32;
+  *d16 = *s16;
+}
+
+// Helper function to compare MAC addresses
+static bool macEqual(const uint8_t* mac1, const uint8_t* mac2) {
+  const uint32_t* m1_32 = (const uint32_t*)mac1;
+  const uint32_t* m2_32 = (const uint32_t*)mac2;
+  const uint16_t* m1_16 = (const uint16_t*)(mac1 + 4);
+  const uint16_t* m2_16 = (const uint16_t*)(mac2 + 4);
+  return (*m1_32 == *m2_32) && (*m1_16 == *m2_16);
+}
+
+void debugMonitor_init(DebugMonitor* monitor, void* transport, 
+                       DebugMonitor_SendFunc sendFunc, DebugMonitor_AddPeerFunc addPeerFunc,
+                       const char* devicePrefix, unsigned long bootTime) {
   monitor->transport = transport;
+  monitor->sendFunc = sendFunc;
+  monitor->addPeerFunc = addPeerFunc;
+  monitor->devicePrefix = devicePrefix;
   monitor->bootTime = bootTime;
   monitor->paired = false;
   monitor->espNowInitialized = false;
   monitor->lastBeaconTime = 0;
+  monitor->statusSent = false;
   // Fast zero using 32-bit and 16-bit writes
   uint32_t* mac32 = (uint32_t*)monitor->mac;
   uint16_t* mac16 = (uint16_t*)(monitor->mac + 4);
@@ -42,6 +71,10 @@ void debugMonitor_handleDiscoveryRequest(DebugMonitor* monitor, const uint8_t* m
 }
 
 void debugMonitor_handleBeacon(DebugMonitor* monitor, const uint8_t* monitorMAC, uint8_t channel) {
+  debugMonitor_handleBeaconWithCallback(monitor, monitorMAC, channel, NULL);
+}
+
+void debugMonitor_handleBeaconWithCallback(DebugMonitor* monitor, const uint8_t* monitorMAC, uint8_t channel, DebugMonitor_StatusCallback callback) {
   if (!isValidMAC(monitorMAC)) return;
   
   bool isSavedMonitor = macEqual(monitorMAC, monitor->mac);
@@ -51,9 +84,10 @@ void debugMonitor_handleBeacon(DebugMonitor* monitor, const uint8_t* monitorMAC,
     macCopy(monitor->mac, monitorMAC);
     monitor->paired = true;
     monitor->lastBeaconTime = millis();
-    monitor->espNowInitialized = monitor->transport->initialized;  // Ensure flag is set
+    monitor->espNowInitialized = true;  // Assume initialized if we're handling beacons
+    monitor->statusSent = false;  // Reset status sent flag for new pairing
     
-    espNowTransport_addPeer(monitor->transport, monitorMAC, channel);
+    monitor->addPeerFunc(monitor->transport, monitorMAC, channel);
     
     // Small delay to ensure peer is ready
     delay(DEBUG_MONITOR_PEER_READY_DELAY_MS);
@@ -61,13 +95,33 @@ void debugMonitor_handleBeacon(DebugMonitor* monitor, const uint8_t* monitorMAC,
     debugMonitor_save(monitor);
     
     // Send initialization messages now that monitor is connected
-    debugMonitor_print(monitor, "ESP-NOW initialized");
-    debugMonitor_print(monitor, "=== Transmitter Ready ===");
+    if (!monitor->statusSent) {
+      debugMonitor_print(monitor, "ESP-NOW initialized");
+      if (callback) {
+        // Use callback for custom status (receiver)
+        callback(monitor);
+      }
+      debugMonitor_print(monitor, "=== %s Ready ===", 
+                        strcmp(monitor->devicePrefix, "[T]") == 0 ? "Transmitter" : "Receiver");
+      monitor->statusSent = true;
+    }
   } else {
-    // Update channel and reset beacon time
+    // Update channel and reset beacon time - ensure peer is updated with correct channel
     monitor->lastBeaconTime = millis();
-    monitor->espNowInitialized = monitor->transport->initialized;  // Ensure flag is set
-    espNowTransport_addPeer(monitor->transport, monitorMAC, channel);
+    monitor->addPeerFunc(monitor->transport, monitorMAC, channel);
+    
+    // Send status on first beacon after boot if not already sent (reconnection scenario)
+    if (!monitor->statusSent) {
+      delay(DEBUG_MONITOR_PEER_READY_DELAY_MS);  // Small delay to ensure peer is ready
+      debugMonitor_print(monitor, "ESP-NOW initialized");
+      if (callback) {
+        // Use callback for custom status (receiver)
+        callback(monitor);
+      }
+      debugMonitor_print(monitor, "=== %s Ready ===", 
+                        strcmp(monitor->devicePrefix, "[T]") == 0 ? "Transmitter" : "Receiver");
+      monitor->statusSent = true;
+    }
   }
 }
 
@@ -93,9 +147,14 @@ void debugMonitor_print(DebugMonitor* monitor, const char* format, ...) {
   // Remove trailing newline from buffer (debug monitor handles line breaks)
   removeTrailingNewline(buffer);
   
-  // Format message with [T] prefix (MAC will be added by debug monitor from packet sender)
+  // Format message with device prefix (MAC will be added by debug monitor from packet sender)
+  typedef struct __attribute__((packed)) {
+    uint8_t msgType;
+    char message[200];
+  } debug_message;
+  
   debug_message msg = {MSG_DEBUG, {0}};
-  int written = snprintf(msg.message, sizeof(msg.message), "[T] %s", buffer);
+  int written = snprintf(msg.message, sizeof(msg.message), "%s %s", monitor->devicePrefix, buffer);
   if (written >= sizeof(msg.message)) {
     msg.message[sizeof(msg.message) - 1] = '\0';  // Ensure null termination
   }
@@ -105,7 +164,7 @@ void debugMonitor_print(DebugMonitor* monitor, const char* format, ...) {
   
   // Always try to send - no timeout/disconnect logic
   // If send fails, we'll keep trying (monitor will reconnect via beacon)
-  espNowTransport_send(monitor->transport, monitor->mac, (uint8_t*)&msg, messageLen);
+  monitor->sendFunc(monitor->transport, monitor->mac, (uint8_t*)&msg, messageLen);
 }
 
 void debugMonitor_update(DebugMonitor* monitor, unsigned long currentTime) {
@@ -114,7 +173,7 @@ void debugMonitor_update(DebugMonitor* monitor, unsigned long currentTime) {
   // Monitor will reconnect via beacon when it comes back online
   if (monitor->paired && monitor->lastBeaconTime > 0) {
     unsigned long timeSinceLastBeacon = currentTime - monitor->lastBeaconTime;
-    // If no beacon for 30 seconds, mark as potentially disconnected
+    // If no beacon for 30 seconds, monitor might be offline
     // But keep paired state so we can reconnect quickly when beacon returns
     if (timeSinceLastBeacon > 30000) {
       // Monitor might be offline, but keep paired state for quick reconnect
@@ -124,14 +183,18 @@ void debugMonitor_update(DebugMonitor* monitor, unsigned long currentTime) {
 }
 
 void debugMonitor_load(DebugMonitor* monitor) {
+  Preferences preferences;
   preferences.begin("debugmon", true);  // Read-only
-  if (preferences.isKey("mac0")) {
-    for (int i = 0; i < 6; i++) {
-      char key[8];
-      snprintf(key, sizeof(key), "mac%d", i);
-      monitor->mac[i] = preferences.getUChar(key, 0);
+  bool dbgMonSaved = preferences.getBool("paired", false);
+  if (dbgMonSaved) {
+    bool allZero = true;
+    for (int j = 0; j < 6; j++) {
+      char key[10];
+      snprintf(key, sizeof(key), "mac_%d", j);
+      monitor->mac[j] = preferences.getUChar(key, 0);
+      if (monitor->mac[j] != 0) allZero = false;
     }
-    monitor->paired = isValidMAC(monitor->mac);
+    monitor->paired = !allZero;
   } else {
     monitor->paired = false;
   }
@@ -140,18 +203,21 @@ void debugMonitor_load(DebugMonitor* monitor) {
 
 void debugMonitor_save(DebugMonitor* monitor) {
   if (monitor->paired) {
+    Preferences preferences;
     preferences.begin("debugmon", false);  // Read-write
-    for (int i = 0; i < 6; i++) {
-      char key[8];
-      snprintf(key, sizeof(key), "mac%d", i);
-      preferences.putUChar(key, monitor->mac[i]);
+    for (int j = 0; j < 6; j++) {
+      char key[10];
+      snprintf(key, sizeof(key), "mac_%d", j);
+      preferences.putUChar(key, monitor->mac[j]);
     }
+    preferences.putBool("paired", true);
     preferences.end();
   }
 }
 
 // Save debug enabled state
 void debugMonitor_saveDebugState(bool debugEnabled) {
+  Preferences preferences;
   preferences.begin("debugmon", false);  // Read-write
   preferences.putBool("debugEnabled", debugEnabled);
   preferences.end();
@@ -159,6 +225,7 @@ void debugMonitor_saveDebugState(bool debugEnabled) {
 
 // Load debug enabled state
 bool debugMonitor_loadDebugState() {
+  Preferences preferences;
   preferences.begin("debugmon", true);  // Read-only
   bool debugEnabled = preferences.getBool("debugEnabled", false);  // Default to false
   preferences.end();

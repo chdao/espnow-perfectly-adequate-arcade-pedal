@@ -3,11 +3,11 @@
 
 // Clean Architecture: Include shared and domain modules
 #include "shared/messages.h"
+#include "shared/DebugMonitor.h"
 #include "domain/TransmitterManager.h"
 #include "infrastructure/EspNowTransport.h"
 #include "infrastructure/Persistence.h"
 #include "infrastructure/LEDService.h"
-#include "infrastructure/DebugMonitor.h"
 #include "application/PairingService.h"
 #include "application/KeyboardService.h"
 
@@ -28,6 +28,15 @@ unsigned long bootTime = 0;
 void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, uint8_t channel);
 void sendDebugMonitorStatus(DebugMonitor* monitor);
 
+// Transport wrapper functions for DebugMonitor
+static bool receiverSendWrapper(void* transport, const uint8_t* mac, const uint8_t* data, int len) {
+  return receiverEspNowTransport_send((ReceiverEspNowTransport*)transport, mac, data, len);
+}
+
+static bool receiverAddPeerWrapper(void* transport, const uint8_t* mac, uint8_t channel) {
+  return receiverEspNowTransport_addPeer((ReceiverEspNowTransport*)transport, mac, channel);
+}
+
 void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, uint8_t channel) {
   if (len < 1) return;
   
@@ -44,7 +53,7 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
   if (msgType == MSG_DEBUG_MONITOR_BEACON && len >= sizeof(debug_monitor_beacon_message)) {
     debug_monitor_beacon_message* beacon = (debug_monitor_beacon_message*)data;
     // Send status callback to provide full status when monitor connects/reconnects
-    debugMonitor_handleBeacon(&debugMonitor, beacon->monitorMAC, channel, sendDebugMonitorStatus);
+    debugMonitor_handleBeaconWithCallback(&debugMonitor, beacon->monitorMAC, channel, sendDebugMonitorStatus);
     return;
   }
   
@@ -179,7 +188,7 @@ void setup() {
     // Continue anyway - might recover on next boot
   }
   
-  debugMonitor_init(&debugMonitor, &transport, bootTime);
+  debugMonitor_init(&debugMonitor, &transport, receiverSendWrapper, receiverAddPeerWrapper, "[R]", bootTime);
   debugMonitor_load(&debugMonitor);
   debugMonitor.espNowInitialized = transport.initialized;
   
@@ -221,10 +230,8 @@ void sendDebugMonitorStatus(DebugMonitor* monitor) {
   if (!monitor->paired || !monitor->espNowInitialized) return;
   if (monitor->statusSent) return;  // Already sent, don't send again
   
-  debugMonitor_print(monitor, "ESP-NOW initialized");
   debugMonitor_print(monitor, "Loaded %d transmitter(s) from storage", transmitterManager.count);
   debugMonitor_print(monitor, "Pedal slots used: %d/%d", transmitterManager.slotsUsed, MAX_PEDAL_SLOTS);
-  debugMonitor_print(monitor, "=== Receiver Ready ===");
   
   monitor->statusSent = true;  // Mark as sent
 }
@@ -246,10 +253,10 @@ void loop() {
 }
 
 // Include implementation files (Arduino IDE doesn't auto-compile .cpp files in subdirectories)
+#include "shared/DebugMonitor.cpp"
 #include "domain/TransmitterManager.cpp"
 #include "infrastructure/EspNowTransport.cpp"
 #include "infrastructure/Persistence.cpp"
 #include "infrastructure/LEDService.cpp"
-#include "infrastructure/DebugMonitor.cpp"
 #include "application/PairingService.cpp"
 #include "application/KeyboardService.cpp"

@@ -1,4 +1,5 @@
 #include "DebugMonitor.h"
+#include "messages.h"  // For MAC helper functions
 #include <stdarg.h>
 #include <string.h>
 #include <Arduino.h>
@@ -14,32 +15,7 @@ static void removeTrailingNewline(char* str) {
   }
 }
 
-// Helper function to check if MAC is valid (not all zeros)
-static bool isValidMAC(const uint8_t* mac) {
-  for (int i = 0; i < 6; i++) {
-    if (mac[i] != 0) return true;
-  }
-  return false;
-}
-
-// Helper function to copy MAC addresses
-static void macCopy(uint8_t* dest, const uint8_t* src) {
-  uint32_t* d32 = (uint32_t*)dest;
-  uint16_t* d16 = (uint16_t*)(dest + 4);
-  const uint32_t* s32 = (const uint32_t*)src;
-  const uint16_t* s16 = (const uint16_t*)(src + 4);
-  *d32 = *s32;
-  *d16 = *s16;
-}
-
-// Helper function to compare MAC addresses
-static bool macEqual(const uint8_t* mac1, const uint8_t* mac2) {
-  const uint32_t* m1_32 = (const uint32_t*)mac1;
-  const uint32_t* m2_32 = (const uint32_t*)mac2;
-  const uint16_t* m1_16 = (const uint16_t*)(mac1 + 4);
-  const uint16_t* m2_16 = (const uint16_t*)(mac2 + 4);
-  return (*m1_32 == *m2_32) && (*m1_16 == *m2_16);
-}
+// Note: isValidMAC, macCopy, and macEqual are now in messages.h
 
 void debugMonitor_init(DebugMonitor* monitor, void* transport, 
                        DebugMonitor_SendFunc sendFunc, DebugMonitor_AddPeerFunc addPeerFunc,

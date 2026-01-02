@@ -73,7 +73,7 @@ typedef struct __attribute__((packed)) transmitter_paired_message {
 } transmitter_paired_message;
 
 // Battery optimization: delay when paired and idle (increases delay to reduce CPU usage)
-#define IDLE_DELAY_PAIRED 100  // 100ms delay when paired and idle (reduces CPU usage significantly)
+#define IDLE_DELAY_PAIRED 10  // 10ms delay when paired and idle (reduces CPU usage significantly)
 #define IDLE_DELAY_UNPAIRED 200  // 200ms delay when not paired (longer delay since less activity expected)
 
 struct PedalState {
@@ -711,7 +711,7 @@ void loop() {
   // ESP-NOW can still receive messages during this delay
   // Longer delay when not paired reduces power consumption when idle
   if (isPaired) {
-    delay(IDLE_DELAY_PAIRED);  // 100ms when paired (lower latency)
+    delay(IDLE_DELAY_PAIRED);  // 10ms when paired (lower latency)
   } else {
     delay(IDLE_DELAY_UNPAIRED);  // 200ms when not paired (better battery life)
   }

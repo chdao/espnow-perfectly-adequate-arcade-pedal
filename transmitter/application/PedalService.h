@@ -14,11 +14,12 @@ typedef struct {
   PairingState* pairingState;
   EspNowTransport* transport;
   unsigned long* lastActivityTime;
+  unsigned long bootTime;
   void (*onActivity)();
 } PedalService;
 
 void pedalService_init(PedalService* service, PedalReader* reader, PairingState* pairingState, 
-                       EspNowTransport* transport, unsigned long* lastActivityTime);
+                       EspNowTransport* transport, unsigned long* lastActivityTime, unsigned long bootTime);
 void pedalService_setPairingService(PairingService* pairingService);
 void pedalService_update(PedalService* service);
 void pedalService_sendPedalEvent(PedalService* service, char key, bool pressed);

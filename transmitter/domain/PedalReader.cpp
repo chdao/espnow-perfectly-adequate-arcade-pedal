@@ -21,6 +21,7 @@ void pedalReader_init(PedalReader* reader, uint8_t pedal1Pin, uint8_t pedal2Pin,
 bool pedalReader_checkPedal(PedalReader* reader, uint8_t pin, PedalState* state) {
   bool currentState = digitalRead(pin);
   
+  // Fast path: no change and not debouncing
   if (currentState == state->lastState && !state->debouncing) {
     return false;  // No change
   }
@@ -33,17 +34,25 @@ bool pedalReader_checkPedal(PedalReader* reader, uint8_t pin, PedalState* state)
       state->debouncing = true;
       return false;
     } else if (currentTime - state->debounceTime >= DEBOUNCE_DELAY) {
+      // Only read pin again if debounce time has passed (optimization: avoid double read)
+      // Re-read to confirm state is still LOW
       if (digitalRead(pin) == LOW) {
         state->lastState = LOW;
         state->debouncing = false;
         return true;  // Pressed
+      } else {
+        // State changed during debounce - cancel
+        state->debouncing = false;
+        return false;
       }
     }
   } else if (currentState == HIGH && state->lastState == LOW) {
+    // Release detected - no debounce needed for release
     state->lastState = HIGH;
     state->debouncing = false;
     return true;  // Released
   } else if (currentState == HIGH && state->debouncing) {
+    // Was debouncing but now HIGH - cancel debounce
     state->debouncing = false;
   }
   

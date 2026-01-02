@@ -16,59 +16,71 @@ typedef struct __attribute__((packed)) debug_message {
   char message[200]; // Debug message text (null-terminated)
 } debug_message;
 
+// Debug monitor beacon message structure
+typedef struct __attribute__((packed)) debug_monitor_beacon_message {
+  uint8_t msgType;        // 0x08 = MSG_DEBUG_MONITOR_BEACON
+  uint8_t monitorMAC[6];
+} debug_monitor_beacon_message;
+
 #define MSG_DEBUG 0x04
+#define MSG_DEBUG_MONITOR_BEACON 0x08
 
-uint8_t receiverMAC[6] = {0};  // Will be set via Serial input or auto-discovery
-bool isPaired = false;
-bool discoveryMode = true;
-unsigned long discoveryStartTime = 0;
-unsigned long lastDiscoverySend = 0;
-
-#define DISCOVERY_TIMEOUT 10000  // 10 seconds
-#define DISCOVERY_SEND_INTERVAL 1000  // Send discovery every 1 second
 uint8_t broadcastMAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-// Discovery request structure (matches receiver)
-typedef struct __attribute__((packed)) discovery_req {
-  uint8_t msgType;   // 0x05 = debug monitor discovery request
-  uint8_t reserved[3];
-} discovery_req;
-
-#define MSG_DEBUG_MONITOR_REQ 0x05
+#define BEACON_SEND_INTERVAL 5000  // Broadcast beacon every 5 seconds
+unsigned long lastBeaconSend = 0;
 
 void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-  if (len < sizeof(debug_message)) return;
+  // Extract sender MAC from packet info
+  const uint8_t* senderMAC = info->src_addr;
   
-  debug_message msg;
-  memcpy(&msg, data, len);
+  // Add sender as peer if not already added (needed for reliable communication)
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, senderMAC, 6);
+  peerInfo.channel = info->rx_ctrl ? info->rx_ctrl->channel : 0;
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);  // Will return ESP_ERR_ESPNOW_EXIST if already exists, which is fine
   
-  if (msg.msgType == MSG_DEBUG) {
-    // Print debug message to Serial
-    Serial.print("[DEBUG] ");
+  if (len < 1) return;
+  
+  uint8_t msgType = data[0];
+  
+  // Handle debug monitor beacon (ignore our own beacons)
+  if (msgType == MSG_DEBUG_MONITOR_BEACON) {
+    return;
+  }
+  
+  // Check if this is a debug message (minimum size: msgType + at least 1 byte of message)
+  if (msgType == MSG_DEBUG && len >= 2) {
+    debug_message msg;
+    memcpy(&msg, data, len < sizeof(debug_message) ? len : sizeof(debug_message));
+    
+    // Ensure null termination
+    if (len < sizeof(debug_message)) {
+      msg.message[len - 1] = '\0';
+    }
+    
+    // Print debug message with sender MAC prefix
+    Serial.print("[");
+    for (int i = 0; i < 6; i++) {
+      if (senderMAC[i] < 0x10) Serial.print("0");
+      Serial.print(senderMAC[i], HEX);
+      if (i < 5) Serial.print(":");
+    }
+    Serial.print("] ");
     Serial.println(msg.message);
   }
 }
 
-void sendDiscoveryRequest() {
-  discovery_req req = {MSG_DEBUG_MONITOR_REQ, {0, 0, 0}};
-  esp_now_send(broadcastMAC, (uint8_t*)&req, sizeof(req));
-}
-
-void startDiscovery() {
-  discoveryMode = true;
-  discoveryStartTime = millis();
-  lastDiscoverySend = 0;
+void sendBeacon() {
+  uint8_t monitorMAC[6];
+  WiFi.macAddress(monitorMAC);
   
-  Serial.println("Starting discovery for receiver...");
-  Serial.println("Waiting for receiver to respond...");
+  debug_monitor_beacon_message beacon;
+  beacon.msgType = MSG_DEBUG_MONITOR_BEACON;
+  memcpy(beacon.monitorMAC, monitorMAC, 6);
   
-  esp_now_register_recv_cb(OnDataRecv);
-  
-  esp_now_peer_info_t broadcastPeer = {};
-  memcpy(broadcastPeer.peer_addr, broadcastMAC, 6);
-  broadcastPeer.channel = 0;
-  broadcastPeer.encrypt = false;
-  esp_now_add_peer(&broadcastPeer);
+  esp_now_send(broadcastMAC, (uint8_t*)&beacon, sizeof(beacon));
 }
 
 void setup() {
@@ -96,29 +108,34 @@ void setup() {
   Serial.println("ESP-NOW initialized");
   Serial.println();
   
-  // Print MAC address for manual pairing if needed
+  // Print MAC address
   Serial.print("Debug Monitor MAC: ");
   Serial.println(WiFi.macAddress());
   Serial.println();
   
-  startDiscovery();
+  // Register receive callback
+  esp_now_register_recv_cb(OnDataRecv);
+  
+  // Add broadcast peer
+  esp_now_peer_info_t broadcastPeer = {};
+  memcpy(broadcastPeer.peer_addr, broadcastMAC, 6);
+  broadcastPeer.channel = 0;
+  broadcastPeer.encrypt = false;
+  esp_now_add_peer(&broadcastPeer);
+  
+  Serial.println("Broadcasting beacon - clients will connect automatically");
+  Serial.println();
 }
 
 void loop() {
-  if (discoveryMode) {
-    if (millis() - discoveryStartTime > DISCOVERY_TIMEOUT) {
-      Serial.println("Discovery timeout - receiver not found");
-      Serial.println("Make sure receiver is powered on and running latest code");
-      discoveryMode = false;
-    } else if (millis() - lastDiscoverySend > DISCOVERY_SEND_INTERVAL) {
-      sendDiscoveryRequest();
-      lastDiscoverySend = millis();
-    }
-    delay(100);
-    return;
+  // Broadcast beacon periodically so clients can discover and connect
+  unsigned long currentTime = millis();
+  if (currentTime - lastBeaconSend > BEACON_SEND_INTERVAL) {
+    sendBeacon();
+    lastBeaconSend = currentTime;
   }
   
-  // Monitor is ready - debug messages will be received via callback
+  // Debug messages will be received via callback
   delay(100);
 }
 

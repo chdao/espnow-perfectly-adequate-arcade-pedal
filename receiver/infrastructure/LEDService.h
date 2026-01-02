@@ -10,6 +10,7 @@
 
 typedef struct {
   unsigned long bootTime;
+  bool ledState;  // true = blue (grace period), false = off
 } LEDService;
 
 void ledService_init(LEDService* service, unsigned long bootTime);

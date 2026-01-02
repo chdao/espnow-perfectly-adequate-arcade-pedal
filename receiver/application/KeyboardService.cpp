@@ -11,9 +11,9 @@ void keyboardService_init(KeyboardService* service, TransmitterManager* manager)
   memset(service->keysPressed, 0, sizeof(service->keysPressed));
   
   USB.begin();
-  delay(500);
+  delay(USB_INIT_DELAY_MS);
   Keyboard.begin();
-  delay(2000);
+  delay(KEYBOARD_INIT_DELAY_MS);
 }
 
 void keyboardService_handlePedalEvent(KeyboardService* service, const uint8_t* txMAC, 

@@ -24,28 +24,27 @@ KeyboardService keyboardService;
 // System state
 unsigned long bootTime = 0;
 
-// Forward declaration
+// Forward declarations
 void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, uint8_t channel);
+void sendDebugMonitorStatus(DebugMonitor* monitor);
 
 void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, uint8_t channel) {
   if (len < 1) return;
   
   uint8_t msgType = data[0];
   
-  // Handle debug monitor discovery request
+  // Handle debug monitor discovery request (legacy)
   if (msgType == MSG_DEBUG_MONITOR_REQ) {
-    // Send a debug message to Serial for troubleshooting (can't use debugMonitor_print yet)
-    Serial.print("[RECEIVER] Received MSG_DEBUG_MONITOR_REQ from ");
-    for (int i = 0; i < 6; i++) {
-      Serial.print(senderMAC[i], HEX);
-      if (i < 5) Serial.print(":");
-    }
-    Serial.println();
-    
     debugMonitor_handleDiscoveryRequest(&debugMonitor, senderMAC, channel);
-    
-    // Send immediate confirmation that pairing succeeded
-    debugMonitor_print(&debugMonitor, "Debug monitor discovery request received and processed");
+    // debugMonitor_handleDiscoveryRequest already sends confirmation messages
+    return;
+  }
+  
+  // Handle debug monitor beacon (new proactive discovery)
+  if (msgType == MSG_DEBUG_MONITOR_BEACON && len >= sizeof(debug_monitor_beacon_message)) {
+    debug_monitor_beacon_message* beacon = (debug_monitor_beacon_message*)data;
+    // Send status callback to provide full status when monitor connects/reconnects
+    debugMonitor_handleBeacon(&debugMonitor, beacon->monitorMAC, channel, sendDebugMonitorStatus);
     return;
   }
   
@@ -55,9 +54,13 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
     if (onlineMsg->msgType == MSG_TRANSMITTER_ONLINE) {
       int index = transmitterManager_findIndex(&transmitterManager, senderMAC);
       if (index >= 0) {
-        debugMonitor_print(&debugMonitor, "Received MSG_TRANSMITTER_ONLINE from known transmitter %d", index);
+        debugMonitor_print(&debugMonitor, "Transmitter %d came online - sending MSG_ALIVE", index);
       } else {
-        debugMonitor_print(&debugMonitor, "Received MSG_TRANSMITTER_ONLINE from unknown transmitter");
+        if (transmitterManager.slotsUsed >= MAX_PEDAL_SLOTS) {
+          debugMonitor_print(&debugMonitor, "Unknown transmitter came online (receiver full, checking for replacements)");
+        } else {
+          debugMonitor_print(&debugMonitor, "Unknown transmitter came online (receiver has free slots)");
+        }
       }
       receiverPairingService_handleTransmitterOnline(&pairingService, senderMAC, channel);
       return;
@@ -67,11 +70,19 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
   // Handle transmitter paired broadcast
   if (len >= sizeof(transmitter_paired_message)) {
     transmitter_paired_message* pairedMsg = (transmitter_paired_message*)data;
-    if (pairedMsg->msgType == MSG_TRANSMITTER_PAIRED) {
-      debugMonitor_print(&debugMonitor, "Received MSG_TRANSMITTER_PAIRED");
-      receiverPairingService_handleTransmitterPaired(&pairingService, pairedMsg);
-      return;
-    }
+      if (pairedMsg->msgType == MSG_TRANSMITTER_PAIRED) {
+        int index = transmitterManager_findIndex(&transmitterManager, pairedMsg->transmitterMAC);
+        if (index < 0) {
+          // Transmitter paired with another receiver - remove from our list
+          debugMonitor_print(&debugMonitor, "Transmitter %02X:%02X:%02X:%02X:%02X:%02X paired with another receiver - removing",
+                           pairedMsg->transmitterMAC[0], pairedMsg->transmitterMAC[1], pairedMsg->transmitterMAC[2],
+                           pairedMsg->transmitterMAC[3], pairedMsg->transmitterMAC[4], pairedMsg->transmitterMAC[5]);
+        } else {
+          debugMonitor_print(&debugMonitor, "Transmitter %d paired with another receiver - removing", index);
+        }
+        receiverPairingService_handleTransmitterPaired(&pairingService, pairedMsg);
+        return;
+      }
   }
   
   // Handle standard messages
@@ -91,9 +102,38 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
     }
     
     case MSG_DISCOVERY_REQ: {
-      debugMonitor_print(&debugMonitor, "Discovery request from %02X:%02X:%02X:%02X:%02X:%02X (mode=%d)",
-                         senderMAC[0], senderMAC[1], senderMAC[2], senderMAC[3], senderMAC[4], senderMAC[5], msg->pedalMode);
+      int indexBefore = transmitterManager_findIndex(&transmitterManager, senderMAC);
+      bool isKnown = (indexBefore >= 0);
+      int slotsBefore = transmitterManager.slotsUsed;
+      
+      debugMonitor_print(&debugMonitor, "Discovery request from %02X:%02X:%02X:%02X:%02X:%02X (mode=%d, known=%s)",
+                         senderMAC[0], senderMAC[1], senderMAC[2], senderMAC[3], senderMAC[4], senderMAC[5], 
+                         msg->pedalMode, isKnown ? "yes" : "no");
+      
       receiverPairingService_handleDiscoveryRequest(&pairingService, senderMAC, msg->pedalMode, channel, millis());
+      
+      // Check if discovery was accepted
+      int indexAfter = transmitterManager_findIndex(&transmitterManager, senderMAC);
+      bool isNowPaired = (indexAfter >= 0);
+      bool slotsIncreased = (transmitterManager.slotsUsed > slotsBefore);
+      
+      if (isKnown && isNowPaired) {
+        // Known transmitter reconnected
+        debugMonitor_print(&debugMonitor, "Transmitter %d reconnected (slots: %d/%d)", 
+                          indexAfter, transmitterManager.slotsUsed, MAX_PEDAL_SLOTS);
+      } else if (!isKnown && slotsIncreased && isNowPaired) {
+        // New transmitter paired
+        debugMonitor_print(&debugMonitor, "Transmitter %d paired successfully (slots: %d/%d)", 
+                          indexAfter, transmitterManager.slotsUsed, MAX_PEDAL_SLOTS);
+      } else if (transmitterManager.slotsUsed >= MAX_PEDAL_SLOTS) {
+        // Rejected: receiver full
+        debugMonitor_print(&debugMonitor, "Discovery rejected: receiver full (%d/%d slots)", 
+                          transmitterManager.slotsUsed, MAX_PEDAL_SLOTS);
+      } else if (!isNowPaired) {
+        // Rejected: insufficient slots or grace period expired
+        debugMonitor_print(&debugMonitor, "Discovery rejected: insufficient slots or grace period expired");
+      }
+      
       persistence_save(&transmitterManager);
       break;
     }
@@ -115,6 +155,10 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
     }
     
     case MSG_ALIVE: {
+      int index = transmitterManager_findIndex(&transmitterManager, senderMAC);
+      if (index >= 0) {
+        debugMonitor_print(&debugMonitor, "Received MSG_ALIVE from transmitter %d", index);
+      }
       receiverPairingService_handleAlive(&pairingService, senderMAC);
       break;
     }
@@ -129,9 +173,16 @@ void setup() {
   
   // Initialize infrastructure layer first (needed for debug monitor)
   receiverEspNowTransport_init(&transport);
+  
+  if (!transport.initialized) {
+    Serial.println("ERROR: ESP-NOW initialization failed!");
+    Serial.println("System will continue but communication may not work.");
+    // Continue anyway - might recover on next boot
+  }
+  
   debugMonitor_init(&debugMonitor, &transport, bootTime);
   debugMonitor_load(&debugMonitor);
-  debugMonitor.espNowInitialized = true;
+  debugMonitor.espNowInitialized = transport.initialized;
   
   // Load persisted state
   persistence_load(&transmitterManager);
@@ -142,31 +193,41 @@ void setup() {
   receiverPairingService_init(&pairingService, &transmitterManager, &transport, bootTime);
   keyboardService_init(&keyboardService, &transmitterManager);
   
-  // Register message callback (must be before adding peers)
-  receiverEspNowTransport_registerReceiveCallback(&transport, onMessageReceived);
-  
-  // Add broadcast peer
-  uint8_t broadcastMAC[] = BROADCAST_MAC;
-  receiverEspNowTransport_addPeer(&transport, broadcastMAC, 0);
-  
-  // Add saved transmitters as peers
-  for (int i = 0; i < transmitterManager.count; i++) {
-    receiverEspNowTransport_addPeer(&transport, transmitterManager.transmitters[i].mac, 0);
-  }
-  
-  // Add saved debug monitor as peer (if it was saved)
-  if (debugMonitor.paired) {
-    receiverEspNowTransport_addPeer(&transport, debugMonitor.mac, 0);
-    // Small delay to ensure peer is ready before sending messages
-    delay(50);
+  // Register message callback and add peers (only if ESP-NOW initialized)
+  if (transport.initialized) {
+    receiverEspNowTransport_registerReceiveCallback(&transport, onMessageReceived);
     
-    // Send debug messages now that ESP-NOW is fully initialized
-    debugMonitor_print(&debugMonitor, "ESP-NOW initialized");
-    debugMonitor_print(&debugMonitor, "Loaded %d transmitter(s) from EEPROM", transmitterManager.count);
-    debugMonitor_print(&debugMonitor, "Pedal slots used: %d/%d", transmitterManager.slotsUsed, MAX_PEDAL_SLOTS);
+    // Add broadcast peer
+    uint8_t broadcastMAC[] = BROADCAST_MAC;
+    receiverEspNowTransport_addPeer(&transport, broadcastMAC, 0);
+    
+    // Add saved transmitters as peers
+    for (int i = 0; i < transmitterManager.count; i++) {
+      receiverEspNowTransport_addPeer(&transport, transmitterManager.transmitters[i].mac, 0);
+    }
+    
+    // Add saved debug monitor as peer (if it was saved) - must be done before sending messages
+    if (debugMonitor.paired) {
+      receiverEspNowTransport_addPeer(&transport, debugMonitor.mac, 0);
+      delay(DEBUG_MONITOR_PEER_READY_DELAY_MS);
+    }
   }
   
-  debugMonitor_print(&debugMonitor, "=== Receiver Ready ===");
+  // Don't send status messages here - they will be sent when the monitor's beacon is received
+  // This ensures we only send once when the monitor actually connects, not on every boot
+}
+
+// Send full status to debug monitor (used when monitor connects/reconnects)
+void sendDebugMonitorStatus(DebugMonitor* monitor) {
+  if (!monitor->paired || !monitor->espNowInitialized) return;
+  if (monitor->statusSent) return;  // Already sent, don't send again
+  
+  debugMonitor_print(monitor, "ESP-NOW initialized");
+  debugMonitor_print(monitor, "Loaded %d transmitter(s) from storage", transmitterManager.count);
+  debugMonitor_print(monitor, "Pedal slots used: %d/%d", transmitterManager.slotsUsed, MAX_PEDAL_SLOTS);
+  debugMonitor_print(monitor, "=== Receiver Ready ===");
+  
+  monitor->statusSent = true;  // Mark as sent
 }
 
 void loop() {
@@ -175,10 +236,14 @@ void loop() {
   // Update pairing service (handles beacons, pings, replacement logic)
   receiverPairingService_update(&pairingService, currentTime);
   
+  // Update debug monitor (checks for beacons, manages connection)
+  debugMonitor_update(&debugMonitor, currentTime);
+  
   // Update LED status
   ledService_update(&ledService, currentTime);
   
-  delay(10);
+  #define LOOP_DELAY_MS 10
+  delay(LOOP_DELAY_MS);
 }
 
 // Include implementation files (Arduino IDE doesn't auto-compile .cpp files in subdirectories)

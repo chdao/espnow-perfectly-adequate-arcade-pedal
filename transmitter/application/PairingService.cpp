@@ -13,7 +13,12 @@ void pairingService_init(PairingService* service, PairingState* state, EspNowTra
 }
 
 void pairingService_handleBeacon(PairingService* service, const uint8_t* senderMAC, const beacon_message* beacon) {
-  int slotsNeeded = (service->pedalMode == 0) ? 2 : 1;
+  // Validate MAC addresses
+  if (!isValidMAC(senderMAC) || !isValidMAC(beacon->receiverMAC)) {
+    return;  // Invalid MAC addresses, ignore beacon
+  }
+  
+  int slotsNeeded = getSlotsNeeded(service->pedalMode);
   
   if (beacon->availableSlots >= slotsNeeded) {
     pairingState_setDiscoveredReceiver(service->pairingState, beacon->receiverMAC, beacon->availableSlots);
@@ -30,6 +35,10 @@ void pairingService_handleDiscoveryResponse(PairingService* service, const uint8
   pairingState_setPaired(service->pairingState, senderMAC);
   espNowTransport_addPeer(service->transport, senderMAC, channel);
   
+  // Clear waiting flag since we're now paired
+  service->pairingState->waitingForDiscoveryResponse = false;
+  service->pairingState->discoveryRequestTime = 0;
+  
   pairingService_broadcastPaired(service, senderMAC);
   
   if (service->onPaired) {
@@ -43,11 +52,11 @@ void pairingService_handleAlive(PairingService* service, const uint8_t* senderMA
   }
   
   // Check if this is the discovered receiver
-  bool isDiscovered = (memcmp(senderMAC, service->pairingState->discoveredReceiverMAC, 6) == 0) && 
+  bool isDiscovered = macEqual(senderMAC, service->pairingState->discoveredReceiverMAC) && 
                       service->pairingState->receiverBeaconReceived;
   
   if (isDiscovered) {
-    int slotsNeeded = (service->pedalMode == 0) ? 2 : 1;
+    int slotsNeeded = getSlotsNeeded(service->pedalMode);
     if (service->pairingState->discoveredAvailableSlots < slotsNeeded) {
       return;  // Not enough slots
     }
@@ -56,13 +65,17 @@ void pairingService_handleAlive(PairingService* service, const uint8_t* senderMA
     pairingState_setPaired(service->pairingState, senderMAC);
     espNowTransport_addPeer(service->transport, senderMAC, channel);
     
+    // Clear waiting flag since we're now paired
+    service->pairingState->waitingForDiscoveryResponse = false;
+    service->pairingState->discoveryRequestTime = 0;
+    
     if (service->onPaired) {
       service->onPaired(senderMAC);
     }
   } else {
     // Unknown receiver - send discovery request if we have beacon info
     if (service->pairingState->receiverBeaconReceived) {
-      int slotsNeeded = (service->pedalMode == 0) ? 2 : 1;
+      int slotsNeeded = getSlotsNeeded(service->pedalMode);
       if (service->pairingState->discoveredAvailableSlots < slotsNeeded) {
         pairingState_clearDiscoveredReceiver(service->pairingState);
         return;
@@ -81,6 +94,11 @@ void pairingService_handleAlive(PairingService* service, const uint8_t* senderMA
 }
 
 void pairingService_initiatePairing(PairingService* service, const uint8_t* receiverMAC, uint8_t channel) {
+  // Validate MAC address
+  if (!isValidMAC(receiverMAC)) {
+    return;  // Invalid MAC address
+  }
+  
   if (pairingState_isPaired(service->pairingState)) {
     return;  // Already paired
   }
@@ -89,7 +107,7 @@ void pairingService_initiatePairing(PairingService* service, const uint8_t* rece
     return;  // No beacon received yet
   }
   
-  int slotsNeeded = (service->pedalMode == 0) ? 2 : 1;
+  int slotsNeeded = getSlotsNeeded(service->pedalMode);
   if (service->pairingState->discoveredAvailableSlots < slotsNeeded) {
     return;  // Not enough slots
   }
@@ -109,7 +127,7 @@ void pairingService_broadcastOnline(PairingService* service) {
   
   transmitter_online_message onlineMsg;
   onlineMsg.msgType = MSG_TRANSMITTER_ONLINE;
-  memcpy(onlineMsg.transmitterMAC, transmitterMAC, 6);
+  macCopy(onlineMsg.transmitterMAC, transmitterMAC);
   
   espNowTransport_broadcast(service->transport, (uint8_t*)&onlineMsg, sizeof(onlineMsg));
 }
@@ -120,22 +138,10 @@ void pairingService_broadcastPaired(PairingService* service, const uint8_t* rece
   
   transmitter_paired_message pairedMsg;
   pairedMsg.msgType = MSG_TRANSMITTER_PAIRED;
-  memcpy(pairedMsg.transmitterMAC, transmitterMAC, 6);
-  memcpy(pairedMsg.receiverMAC, receiverMAC, 6);
+  macCopy(pairedMsg.transmitterMAC, transmitterMAC);
+  macCopy(pairedMsg.receiverMAC, receiverMAC);
   
   espNowTransport_broadcast(service->transport, (uint8_t*)&pairedMsg, sizeof(pairedMsg));
 }
 
-bool pairingService_checkDiscoveryTimeout(PairingService* service, unsigned long currentTime) {
-  if (service->pairingState->waitingForDiscoveryResponse && 
-      !pairingState_isPaired(service->pairingState) && 
-      service->pairingState->discoveryRequestTime > 0) {
-    if (currentTime - service->pairingState->discoveryRequestTime > 5000) {
-      service->pairingState->waitingForDiscoveryResponse = false;
-      service->pairingState->discoveryRequestTime = 0;
-      return true;  // Timeout occurred
-    }
-  }
-  return false;
-}
 

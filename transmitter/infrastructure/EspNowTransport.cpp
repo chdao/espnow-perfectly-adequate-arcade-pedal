@@ -6,7 +6,6 @@
 #include "../shared/messages.h"
 
 static MessageReceivedCallback g_receiveCallback = nullptr;
-static EspNowTransport* g_transport = nullptr;
 
 void OnDataRecvWrapper(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if (g_receiveCallback) {
@@ -17,15 +16,31 @@ void OnDataRecvWrapper(const esp_now_recv_info_t *info, const uint8_t *data, int
 }
 
 void espNowTransport_init(EspNowTransport* transport) {
-  g_transport = transport;
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   
-  if (esp_now_init() == ESP_OK) {
-    transport->initialized = true;
-  } else {
-    transport->initialized = false;
+  // Retry ESP-NOW initialization
+  int retries = ESPNOW_INIT_RETRY_COUNT;
+  esp_err_t result = ESP_FAIL;
+  
+  while (retries > 0 && result != ESP_OK) {
+    result = esp_now_init();
+    if (result == ESP_OK) {
+      transport->initialized = true;
+      return;
+    }
+    // If ESP-NOW was already initialized, deinit and retry
+    if (result == ESP_ERR_ESPNOW_NOT_INIT) {
+      esp_now_deinit();
+      delay(ESPNOW_DEINIT_DELAY_MS);
+    } else {
+      delay(ESPNOW_INIT_RETRY_DELAY_MS);
+    }
+    retries--;
   }
+  
+  // If all retries failed, mark as not initialized
+  transport->initialized = false;
 }
 
 bool espNowTransport_send(EspNowTransport* transport, const uint8_t* mac, const uint8_t* data, int len) {
@@ -39,7 +54,7 @@ bool espNowTransport_addPeer(EspNowTransport* transport, const uint8_t* mac, uin
   if (!transport->initialized) return false;
   
   esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, mac, 6);
+  macCopy(peerInfo.peer_addr, mac);
   peerInfo.channel = channel;
   peerInfo.encrypt = false;
   

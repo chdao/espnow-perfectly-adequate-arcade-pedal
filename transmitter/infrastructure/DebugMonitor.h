@@ -12,22 +12,23 @@
 
 typedef struct {
   uint8_t mac[6];  // Debug monitor MAC
-  uint8_t deviceMAC[6];  // This device's (receiver) MAC
+  uint8_t deviceMAC[6];  // This device's (transmitter) MAC
   bool paired;
-  ReceiverEspNowTransport* transport;
+  EspNowTransport* transport;
   unsigned long bootTime;
   bool espNowInitialized;
   unsigned long lastBeaconTime;  // Last time we saw a beacon from monitor
-  bool statusSent;  // Track if status has been sent to prevent duplicates
 } DebugMonitor;
 
-void debugMonitor_init(DebugMonitor* monitor, ReceiverEspNowTransport* transport, unsigned long bootTime);
+void debugMonitor_init(DebugMonitor* monitor, EspNowTransport* transport, unsigned long bootTime);
 void debugMonitor_handleDiscoveryRequest(DebugMonitor* monitor, const uint8_t* monitorMAC, uint8_t channel);
-void debugMonitor_handleBeacon(DebugMonitor* monitor, const uint8_t* monitorMAC, uint8_t channel, void (*sendStatusCallback)(DebugMonitor*));
+void debugMonitor_handleBeacon(DebugMonitor* monitor, const uint8_t* monitorMAC, uint8_t channel);
 void debugMonitor_print(DebugMonitor* monitor, const char* format, ...);
 void debugMonitor_update(DebugMonitor* monitor, unsigned long currentTime);
 void debugMonitor_load(DebugMonitor* monitor);
 void debugMonitor_save(DebugMonitor* monitor);
+void debugMonitor_saveDebugState(bool debugEnabled);
+bool debugMonitor_loadDebugState();
 
 #endif // DEBUG_MONITOR_H
 

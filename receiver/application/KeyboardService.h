@@ -6,6 +6,9 @@
 #include "../domain/TransmitterManager.h"
 #include "../shared/messages.h"
 
+#define USB_INIT_DELAY_MS 500
+#define KEYBOARD_INIT_DELAY_MS 2000
+
 typedef struct {
   TransmitterManager* manager;
   bool keysPressed[256];

@@ -7,6 +7,7 @@
 #include "../infrastructure/EspNowTransport.h"
 #include "../shared/messages.h"
 
+
 typedef struct {
   PairingState* pairingState;
   EspNowTransport* transport;
@@ -22,7 +23,6 @@ void pairingService_handleAlive(PairingService* service, const uint8_t* senderMA
 void pairingService_initiatePairing(PairingService* service, const uint8_t* receiverMAC, uint8_t channel);
 void pairingService_broadcastOnline(PairingService* service);
 void pairingService_broadcastPaired(PairingService* service, const uint8_t* receiverMAC);
-bool pairingService_checkDiscoveryTimeout(PairingService* service, unsigned long currentTime);
 
 #endif // PAIRING_SERVICE_H
 

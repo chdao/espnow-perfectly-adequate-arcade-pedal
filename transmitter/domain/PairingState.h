@@ -16,9 +16,8 @@ typedef struct {
 } PairingState;
 
 void pairingState_init(PairingState* state);
-bool pairingState_isPaired(const PairingState* state);
+static inline bool pairingState_isPaired(const PairingState* state) { return state->isPaired; }
 void pairingState_setPaired(PairingState* state, const uint8_t* receiverMAC);
-void pairingState_clearPairing(PairingState* state);
 void pairingState_setDiscoveredReceiver(PairingState* state, const uint8_t* receiverMAC, uint8_t availableSlots);
 void pairingState_clearDiscoveredReceiver(PairingState* state);
 

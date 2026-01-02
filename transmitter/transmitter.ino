@@ -139,7 +139,15 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
   if (pairingState_isPaired(&pairingState)) {
     // Already paired - check if message is from our paired receiver
     if (macEqual(senderMAC, pairingState.pairedReceiverMAC)) {
-      // Message from our paired receiver - silently accept (no debug spam for normal operation)
+      // Message from our paired receiver
+      if (msg->msgType == MSG_ALIVE) {
+        if (debugEnabled) {
+          debugPrint("Received MSG_ALIVE from paired receiver - replying\n");
+        }
+        // Reply with MSG_ALIVE to acknowledge we're still alive
+        struct_message reply = {MSG_ALIVE, 0, false, 0};
+        espNowTransport_send(&transport, pairingState.pairedReceiverMAC, (uint8_t*)&reply, sizeof(reply));
+      }
     } else {
       // Message from different receiver - conflict detected
       if (msg->msgType == MSG_ALIVE || msg->msgType == MSG_DISCOVERY_RESP) {
@@ -156,6 +164,9 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
     if (msg->msgType == MSG_DISCOVERY_RESP) {
       pairingService_handleDiscoveryResponse(&pairingService, senderMAC, channel);
     } else if (msg->msgType == MSG_ALIVE) {
+      if (debugEnabled) {
+        debugPrint("Received MSG_ALIVE from receiver (not paired yet)\n");
+      }
       pairingService_handleAlive(&pairingService, senderMAC, channel);
     }
   }
@@ -164,7 +175,8 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
 
 void goToDeepSleep() {
   if (debugEnabled) {
-    debugPrint("Going to deep sleep...\n");
+    debugPrint("Inactivity timeout - entering deep sleep\n");
+    delay(50);  // Give time for the message to be sent
   }
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PEDAL_1_PIN, LOW);
   esp_deep_sleep_start();
@@ -174,6 +186,10 @@ void setup() {
   // Initialize Serial (minimal use - only for startup message)
   Serial.begin(115200);
   delay(SERIAL_INIT_DELAY_MS);
+  
+  // Check if we woke from deep sleep due to pedal press
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool wokeFromPedal = (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0);
   
   // Initialize debug button (pin 27 on FireBeetle) - toggle switch
   pinMode(DEBUG_BUTTON_PIN, INPUT_PULLUP);
@@ -247,6 +263,36 @@ void setup() {
   if (debugMonitor.paired && debugMonitor.espNowInitialized) {
     Serial.println("Debug logs are being sent to the debug monitor");
     // Status messages will be sent when monitor beacon is received
+  }
+  
+  // If we woke from pedal press, handle it immediately
+  if (wokeFromPedal) {
+    if (debugEnabled) {
+      debugPrint("Woke from deep sleep - pedal pressed\n");
+    }
+    
+    // The pedal that woke us (PEDAL_1_PIN) is still pressed
+    // Send the press event if we're paired
+    if (pairingState_isPaired(&pairingState)) {
+      char key = (PEDAL_MODE == 0) ? '1' : 'l';
+      pedalService_sendPedalEvent(&pedalService, key, true);
+      
+      // Wait for pedal release (with timeout)
+      unsigned long pressStart = millis();
+      while (digitalRead(PEDAL_1_PIN) == LOW && (millis() - pressStart) < 5000) {
+        delay(10);
+      }
+      
+      // Send release event
+      if (digitalRead(PEDAL_1_PIN) == HIGH) {
+        pedalService_sendPedalEvent(&pedalService, key, false);
+        if (debugEnabled) {
+          debugPrint("Pedal released after wake\n");
+        }
+      }
+    }
+    
+    lastActivityTime = millis();  // Reset activity timer
   }
 }
 

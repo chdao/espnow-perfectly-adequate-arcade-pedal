@@ -376,7 +376,8 @@ void loop() {
   unsigned long inactiveTime = currentTime - lastActivityTime;
   if (inactiveTime > INACTIVITY_TIMEOUT) {
     if (debugEnabled) {
-      debugPrint("Inactivity detected: %lu ms - entering deep sleep\n", inactiveTime);
+      float inactiveSec = inactiveTime / 1000.0;
+      debugPrint("Inactivity detected: %.1fs - entering deep sleep\n", inactiveSec);
     }
     goToDeepSleep();
   }
@@ -384,7 +385,9 @@ void loop() {
   // Debug: Log inactivity time every 30 seconds when debug is enabled
   static unsigned long lastInactivityLog = 0;
   if (debugEnabled && (currentTime - lastInactivityLog > 30000)) {
-    debugPrint("Inactive for %lu ms (threshold: %lu ms)\n", inactiveTime, (unsigned long)INACTIVITY_TIMEOUT);
+    float inactiveSec = inactiveTime / 1000.0;
+    float thresholdSec = INACTIVITY_TIMEOUT / 1000.0;
+    debugPrint("Inactive for %.1fs (threshold: %.0fs)\n", inactiveSec, thresholdSec);
     lastInactivityLog = currentTime;
   }
   

@@ -185,7 +185,7 @@ The receiver requires no configuration - it automatically discovers and pairs wi
 - `INACTIVITY_TIMEOUT`: Time before entering deep sleep (default: 10 minutes)
 - `DEBOUNCE_DELAY`: Debounce delay in milliseconds (default: 20ms)
 - `DEBUG_ENABLED`: Enable/disable Serial debug output (default: 0 for battery saving)
-- `IDLE_DELAY_PAIRED`: Delay in loop when paired (default: 100ms)
+- `IDLE_DELAY_PAIRED`: Delay in loop when paired (default: 10ms for better responsiveness)
 - `IDLE_DELAY_UNPAIRED`: Delay in loop when not paired (default: 200ms)
 
 ### Receiver Settings
@@ -198,9 +198,38 @@ The receiver requires no configuration - it automatically discovers and pairs wi
 - First transmitter: LEFT pedal ('l')
 - Second transmitter: RIGHT pedal ('r')
 
+## Debug Monitor
+
+Since the receiver uses USB HID Keyboard, Serial output is not available for debugging. The receiver includes a **debug monitor** feature that sends debug messages via ESP-NOW to a separate ESP32 device.
+
+### Setup
+
+1. **Upload debug monitor code** to a second ESP32 board:
+   - Use `debug-monitor/debug-monitor.ino`
+   - Any ESP32 board with Serial/USB support works (e.g., ESP32-S3-DevKitC-1)
+
+2. **Power on the debug monitor** - It will automatically discover and pair with the receiver
+
+3. **Open Serial Monitor** on the debug monitor board at 115200 baud to see debug messages
+
+### How It Works
+
+- The debug monitor sends a discovery request (`MSG_DEBUG_MONITOR_REQ`) via ESP-NOW broadcast
+- The receiver automatically pairs with the debug monitor and saves its MAC address
+- All `debugPrint()` messages from the receiver are sent to the debug monitor via ESP-NOW
+- Messages are displayed on the Serial Monitor of the debug monitor device
+- The receiver remembers the debug monitor across reboots
+
+### Benefits
+
+- **Real-time debugging** without interfering with USB HID Keyboard functionality
+- **Wireless debugging** - no physical connection needed
+- **Persistent pairing** - debug monitor reconnects automatically after receiver reboot
+- **Timestamped messages** - all debug messages include timestamps (milliseconds since boot)
+
 ## Known Limitations
 
-- **Serial Output**: On ESP32-S2/S3, Serial output may not be available when USB HID Keyboard is active. This is a hardware limitation, but keyboard functionality works correctly.
+- **Serial Output**: On ESP32-S2/S3, Serial output may not be available when USB HID Keyboard is active. This is a hardware limitation, but keyboard functionality works correctly. Use the debug monitor (ESP-NOW) for debugging instead.
 - **USB Composite**: Not all ESP32-S2/S3 boards support USB composite mode (CDC + HID simultaneously).
 
 ## Troubleshooting
@@ -226,8 +255,8 @@ The receiver requires no configuration - it automatically discovers and pairs wi
 ### Serial Monitor not working on receiver
 - This is expected when Keyboard is active on ESP32-S2/S3
 - Keyboard functionality should still work
-- Use hardware UART or debug monitor (ESP-NOW) if Serial debugging is needed
-- Debug messages are sent via ESP-NOW to a debug monitor device
+- **Use the debug monitor** - Upload `debug-monitor/debug-monitor.ino` to a second ESP32 board to receive debug messages wirelessly via ESP-NOW
+- Debug messages are automatically sent to the paired debug monitor device
 
 ### Multiple key presses
 - Adjust `DEBOUNCE_DELAY` if experiencing contact bounce

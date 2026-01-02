@@ -413,22 +413,26 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
       // Check if this is a known transmitter
       int transmitterIndex = getTransmitterIndex(txMAC);
       if (transmitterIndex >= 0) {
-        // Known transmitter - always send MSG_ALIVE when transmitter comes online
-        debugPrint("Received MSG_TRANSMITTER_ONLINE from known transmitter %d - sending MSG_ALIVE", transmitterIndex);
-        
-        // Add as peer if not already added
-        esp_now_peer_info_t peerInfo = {};
-        memcpy(peerInfo.peer_addr, txMAC, 6);
-        peerInfo.channel = esp_now_info->rx_ctrl->channel;
-        peerInfo.encrypt = false;
-        esp_now_add_peer(&peerInfo);
-        
-        // Send MSG_ALIVE immediately
-        struct_message alive = {MSG_ALIVE, 0, false, 0};
-        esp_now_send(txMAC, (uint8_t*)&alive, sizeof(alive));
-        
-        // Update last seen time
-        transmitterLastSeen[transmitterIndex] = millis();
+        // Known transmitter - check if receiver has free slots before sending MSG_ALIVE
+        if (pedalSlotsUsed >= MAX_PEDAL_SLOTS) {
+          debugPrint("Received MSG_TRANSMITTER_ONLINE from known transmitter %d - receiver full, not sending MSG_ALIVE", transmitterIndex);
+        } else {
+          debugPrint("Received MSG_TRANSMITTER_ONLINE from known transmitter %d - sending MSG_ALIVE", transmitterIndex);
+          
+          // Add as peer if not already added
+          esp_now_peer_info_t peerInfo = {};
+          memcpy(peerInfo.peer_addr, txMAC, 6);
+          peerInfo.channel = esp_now_info->rx_ctrl->channel;
+          peerInfo.encrypt = false;
+          esp_now_add_peer(&peerInfo);
+          
+          // Send MSG_ALIVE immediately
+          struct_message alive = {MSG_ALIVE, 0, false, 0};
+          esp_now_send(txMAC, (uint8_t*)&alive, sizeof(alive));
+          
+          // Update last seen time
+          transmitterLastSeen[transmitterIndex] = millis();
+        }
       } else {
         debugPrint("Received MSG_TRANSMITTER_ONLINE from unknown transmitter - ignoring");
       }

@@ -225,6 +225,7 @@ void setup() {
     if (transmitterManager.count > 0) {
       struct_message alive = {MSG_ALIVE, 0, false, 0};
       for (int i = 0; i < transmitterManager.count; i++) {
+        debugMonitor_print(&debugMonitor, "Sending MSG_ALIVE to transmitter %d on boot", i);
         receiverEspNowTransport_send(&transport, transmitterManager.transmitters[i].mac, 
                                      (uint8_t*)&alive, sizeof(alive));
         delay(10);  // Small delay between messages to avoid congestion

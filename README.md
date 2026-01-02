@@ -100,7 +100,31 @@ LED (cathode)          ───> GND
 
 ## Setup Instructions
 
-### 0. Uploading Code to FireBeetle 2 ESP32-E
+### 0. Windows Developer Mode (Required for Symlinks)
+
+**⚠️ WINDOWS USERS ONLY**: This project uses symbolic links to share code between transmitter and receiver. On Windows, you must enable Developer Mode to work with symlinks:
+
+1. Open **Settings** → **Privacy & security** → **For developers**
+2. Toggle **Developer Mode** to ON
+3. Confirm the warning dialog if prompted
+
+**Why is this needed?**
+- The `DebugMonitor.*` files in `transmitter/shared/` and `receiver/shared/` are symbolic links pointing to `shared/DebugMonitor.*`
+- Without Developer Mode, Git will convert symlinks to plain text files, causing compilation errors
+- Linux and macOS users can skip this step (symlinks work by default)
+
+**After cloning the repo**, verify symlinks are working:
+```powershell
+ls receiver/shared/DebugMonitor.h
+# Should show: Mode: la--- (symlink)
+```
+
+If symlinks aren't working after enabling Developer Mode, you may need to re-clone the repository with:
+```bash
+git clone -c core.symlinks=true <repo-url>
+```
+
+### 1. Uploading Code to FireBeetle 2 ESP32-E
 
 **⚠️ IMPORTANT**: To upload sketches to the FireBeetle 2 ESP32-E, you must ground GPIO 0 (D5) during upload:
 
@@ -114,7 +138,7 @@ LED (cathode)          ───> GND
 
 **Alternative method**: Some FireBeetle boards have a BOOT button that does this automatically. If your board has a BOOT button, hold BOOT while pressing RESET, then release RESET first, then release BOOT.
 
-### 1. Configure Transmitter
+### 2. Configure Transmitter
 
 Open `transmitter/transmitter.ino` and set the pedal mode:
 
@@ -127,7 +151,7 @@ Open `transmitter/transmitter.ino` and set the pedal mode:
 - Second paired transmitter: RIGHT pedal ('r')
 - For DUAL mode transmitters: '1' maps to 'l', '2' maps to 'r'
 
-### 2. Configure Receiver
+### 3. Configure Receiver
 
 The receiver requires no configuration - it automatically discovers and pairs with transmitters!
 
@@ -135,7 +159,7 @@ The receiver requires no configuration - it automatically discovers and pairs wi
 - **Blue LED**: Receiver is in grace period (first 30 seconds after boot)
 - **LED Off**: Normal operation after grace period
 
-### 3. Upload Code
+### 4. Upload Code
 
 1. Upload `receiver/receiver.ino` to your ESP32-S2/S3 receiver board
 2. Upload `transmitter/transmitter.ino` to your ESP32 transmitter board(s)

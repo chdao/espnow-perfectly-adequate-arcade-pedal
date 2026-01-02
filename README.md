@@ -20,13 +20,19 @@ A wireless pedal system using ESP-NOW for low-latency communication between peda
 
 ## Hardware
 
-### Recommended Boards
+### Required/Tested Boards
 
 **Transmitter:**
-- [FireBeetle 2 ESP32-E](https://www.dfrobot.com/product-2195.html) - Low power consumption, ideal for battery-powered pedals
+- [FireBeetle 2 ESP32-E](https://www.dfrobot.com/product-2195.html) - **Required for current pin configuration**
+  - Debug toggle button on pin 27 (onboard button)
+  - Optimized for low power consumption
+  - Other ESP32 boards will require pin configuration changes
 
 **Receiver:**
-- [ESP32-S3-DevKitC-1-N16R8](https://www.amazon.com/dp/B0CC8NYXRG) - Native USB HID support
+- [ESP32-S3-DevKitC-1-N16R8](https://www.amazon.com/dp/B0CC8NYXRG) - **Required for LED status indicator**
+  - Blue LED (WS2812 on pin 48) for grace period indication
+  - Native USB HID support (any ESP32-S2/S3 works for HID)
+  - Other ESP32-S2/S3 boards will work but may need LED code changes
 
 **Debug Monitor (optional):**
 - Any ESP32 board with Serial/USB support

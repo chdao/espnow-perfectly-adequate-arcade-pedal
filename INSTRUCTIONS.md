@@ -14,6 +14,25 @@ Complete instructions for building, configuring, and using the ESPNow Perfectly 
 
 ## Prerequisites
 
+### Hardware Requirements
+
+This project is configured for specific boards. Other boards may work but will require code modifications:
+
+**Transmitter** - [FireBeetle 2 ESP32-E](https://www.dfrobot.com/product-2195.html):
+- Debug toggle button on pin 27 (onboard button)
+- Pin configuration: PEDAL_1_PIN=13, PEDAL_2_PIN=14, DEBUG_BUTTON_PIN=27
+- Other ESP32 boards require changing these pin definitions
+
+**Receiver** - [ESP32-S3-DevKitC-1-N16R8](https://www.amazon.com/dp/B0CC8NYXRG):
+- Blue LED (WS2812 on pin 48) for grace period status
+- Any ESP32-S2/S3 board works for USB HID, but LED code may need adjustment
+- LED code can be disabled if not using this specific board
+
+**Debug Monitor** (optional):
+- Any ESP32 board with Serial/USB support
+
+## Prerequisites
+
 ### Windows Developer Mode (Required for Symlinks)
 
 **⚠️ WINDOWS USERS ONLY**: This project uses symbolic links to share code between transmitter and receiver. On Windows, you must enable Developer Mode:

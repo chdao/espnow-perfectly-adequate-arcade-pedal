@@ -297,7 +297,13 @@ void setup() {
   // Only print startup message if debug monitor is paired
   if (debugMonitor.paired && debugMonitor.espNowInitialized) {
     Serial.println("Debug logs are being sent to the debug monitor");
-    // Status messages will be sent when monitor beacon is received
+    
+    // Send ready message immediately if already paired (not waiting for beacon)
+    if (!debugMonitor.statusSent) {
+      debugMonitor_print(&debugMonitor, "Transmitter Ready");
+      debugMonitor_print(&debugMonitor, "Debug mode: %s", debugEnabled ? "ENABLED" : "DISABLED");
+      debugMonitor.statusSent = true;
+    }
   }
   
   // If we woke from pedal press, handle it immediately
@@ -367,8 +373,19 @@ void loop() {
   lastButtonState = currentButtonState;
   
   // Check inactivity timeout
-  if (currentTime - lastActivityTime > INACTIVITY_TIMEOUT) {
+  unsigned long inactiveTime = currentTime - lastActivityTime;
+  if (inactiveTime > INACTIVITY_TIMEOUT) {
+    if (debugEnabled) {
+      debugPrint("Inactivity detected: %lu ms - entering deep sleep\n", inactiveTime);
+    }
     goToDeepSleep();
+  }
+  
+  // Debug: Log inactivity time every 30 seconds when debug is enabled
+  static unsigned long lastInactivityLog = 0;
+  if (debugEnabled && (currentTime - lastInactivityLog > 30000)) {
+    debugPrint("Inactive for %lu ms (threshold: %lu ms)\n", inactiveTime, (unsigned long)INACTIVITY_TIMEOUT);
+    lastInactivityLog = currentTime;
   }
   
   // Update pedal service (handles pedal reading and events)

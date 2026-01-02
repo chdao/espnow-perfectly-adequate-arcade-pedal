@@ -99,8 +99,8 @@ void sendBeacon() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.setRxBufferSize(2048);  // Increase RX buffer
-  Serial.setTxBufferSize(2048);  // Increase TX buffer to handle burst messages
+  Serial.setRxBufferSize(8192);  // Large RX buffer for high-volume debug output
+  Serial.setTxBufferSize(8192);  // Large TX buffer to handle burst messages
   delay(2000);
   
   Serial.println("========================================");

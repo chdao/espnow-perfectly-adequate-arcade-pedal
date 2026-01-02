@@ -70,15 +70,21 @@ void debugMonitor_handleBeaconWithCallback(DebugMonitor* monitor, const uint8_t*
     
     debugMonitor_save(monitor);
     
-    // Send initialization messages now that monitor is connected
+    // Send initialization message now that monitor is connected (only if not already sent)
     if (!monitor->statusSent) {
-      debugMonitor_print(monitor, "ESP-NOW initialized");
       if (callback) {
         // Use callback for custom status (receiver)
         callback(monitor);
       }
-      debugMonitor_print(monitor, "=== %s Ready ===", 
+      debugMonitor_print(monitor, "%s Ready", 
                         strcmp(monitor->devicePrefix, "[T]") == 0 ? "Transmitter" : "Receiver");
+      
+      // For transmitter, show debug state
+      if (strcmp(monitor->devicePrefix, "[T]") == 0) {
+        bool debugEnabled = debugMonitor_loadDebugState();
+        debugMonitor_print(monitor, "Debug mode: %s", debugEnabled ? "ENABLED" : "DISABLED");
+      }
+      
       monitor->statusSent = true;
     }
   } else {
@@ -89,13 +95,19 @@ void debugMonitor_handleBeaconWithCallback(DebugMonitor* monitor, const uint8_t*
     // Send status on first beacon after boot if not already sent (reconnection scenario)
     if (!monitor->statusSent) {
       delay(DEBUG_MONITOR_PEER_READY_DELAY_MS);  // Small delay to ensure peer is ready
-      debugMonitor_print(monitor, "ESP-NOW initialized");
       if (callback) {
         // Use callback for custom status (receiver)
         callback(monitor);
       }
-      debugMonitor_print(monitor, "=== %s Ready ===", 
+      debugMonitor_print(monitor, "%s Ready", 
                         strcmp(monitor->devicePrefix, "[T]") == 0 ? "Transmitter" : "Receiver");
+      
+      // For transmitter, show debug state
+      if (strcmp(monitor->devicePrefix, "[T]") == 0) {
+        bool debugEnabled = debugMonitor_loadDebugState();
+        debugMonitor_print(monitor, "Debug mode: %s", debugEnabled ? "ENABLED" : "DISABLED");
+      }
+      
       monitor->statusSent = true;
     }
   }

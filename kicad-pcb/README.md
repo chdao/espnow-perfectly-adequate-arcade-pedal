@@ -66,6 +66,7 @@ GPIO2:  Green status LED
 GPIO16: RGB LED - Red
 GPIO17: RGB LED - Green  
 GPIO18: RGB LED - Blue
+GPIO21: Pedal switch
 GPIO34: Battery voltage (ADC, input only)
 GPIO35: Charger status (ADC, input only)
 EN:     Reset button (pulled high, button to GND)

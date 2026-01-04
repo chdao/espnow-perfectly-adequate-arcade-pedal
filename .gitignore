@@ -57,9 +57,7 @@ kicad-pcb/~*.lck
 kicad-pcb/esp32-pedal-pcb-backups/
 kicad-pcb/esp32-pedal-pcb-simple.kicad_sch
 kicad-pcb/*.dsn
-kicad-pcb/*.kicad_dru
 kicad-pcb/*.kicad_prl
-kicad-pcb/*.rules
 kicad-pcb/*.ses
 kicad-pcb/fp-info-cache
 kicad-pcb/metadata.json

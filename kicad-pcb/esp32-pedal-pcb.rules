@@ -1,0 +1,123 @@
+
+(rules PCB esp32-pedal-pcb.dsn
+  (snap_angle 
+    fortyfive_degree
+  )
+  (autoroute_settings
+    (fanout off)
+    (autoroute on)
+    (postroute off)
+    (vias on)
+    (via_costs 50)
+    (plane_via_costs 5)
+    (start_ripup_costs 100)
+    (start_pass_no 1)
+    (layer_rule F.Cu
+      (active on)
+      (preferred_direction horizontal)
+      (preferred_direction_trace_costs 1.8)
+      (against_preferred_direction_trace_costs 11.9)
+    )
+    (layer_rule In1.Cu
+      (active on)
+      (preferred_direction vertical)
+      (preferred_direction_trace_costs 1.0)
+      (against_preferred_direction_trace_costs 2.6)
+    )
+    (layer_rule In2.Cu
+      (active on)
+      (preferred_direction horizontal)
+      (preferred_direction_trace_costs 1.0)
+      (against_preferred_direction_trace_costs 11.1)
+    )
+    (layer_rule B.Cu
+      (active on)
+      (preferred_direction vertical)
+      (preferred_direction_trace_costs 1.8)
+      (against_preferred_direction_trace_costs 3.4)
+    )
+  )
+  (rule
+    (width 200.0)
+    (clearance 200.0)
+    (clearance 100.0 (type smd_to_turn_gap))
+    (clearance 50.0 (type smd))
+    (clearance 200.0 (type "kicad_default"))
+  )
+  (padstack "Via[0-3]_600:300_um"
+    (shape
+      (circle F.Cu 600.0 0.0 0.0)
+    )
+    (shape
+      (circle In1.Cu 600.0 0.0 0.0)
+    )
+    (shape
+      (circle In2.Cu 600.0 0.0 0.0)
+    )
+    (shape
+      (circle B.Cu 600.0 0.0 0.0)
+    )
+    (attach off)
+  )
+  (padstack "Via[0-3]_800:400_um"
+    (shape
+      (circle F.Cu 800.0 0.0 0.0)
+    )
+    (shape
+      (circle In1.Cu 800.0 0.0 0.0)
+    )
+    (shape
+      (circle In2.Cu 800.0 0.0 0.0)
+    )
+    (shape
+      (circle B.Cu 800.0 0.0 0.0)
+    )
+    (attach off)
+  )
+  (via 
+    "Via[0-3]_600:300_um" "Via[0-3]_600:300_um" default
+  )
+  (via 
+    "Via[0-3]_800:400_um" "Via[0-3]_800:400_um" default
+  )
+  (via 
+    "Via[0-3]_600:300_um-kicad_default" "Via[0-3]_600:300_um" "kicad_default"
+  )
+  (via 
+    "Via[0-3]_800:400_um-kicad_default" "Via[0-3]_800:400_um" "kicad_default"
+  )
+  (via_rule
+    default "Via[0-3]_600:300_um"
+  )
+  (via_rule
+    "kicad_default" "Via[0-3]_600:300_um-kicad_default"
+  )
+  (class default
+    (clearance_class default)
+    (via_rule default)
+    (rule
+      (width 200.0)
+    )
+    (circuit 
+      (use_layer F.Cu In1.Cu In2.Cu B.Cu)
+    )
+  )
+  (class "kicad_default"
+    "Net-(BT1-+)" "Net-(BT1--)" "Net-(C1-Pad2)" "Net-(D1-VDD)" "Net-(D1-DIN)" "unconnected-(D1-DO-Pad4)" VBUS "Net-(R6-Pad2)"
+    "unconnected-(U2-CE-Pad8)" "unconnected-(U2-~{CHRG}-Pad7)" "unconnected-(U2-EPAD-Pad9)" "unconnected-(U2-TEMP-Pad1)" "unconnected-(U2-EPAD-Pad9)_1" "unconnected-(U2-EPAD-Pad9)_2" "unconnected-(U2-EPAD-Pad9)_3" "unconnected-(U2-EPAD-Pad9)_4"
+    "unconnected-(U2-EPAD-Pad9)_5" "unconnected-(U2-EPAD-Pad9)_6" "unconnected-(U2-EPAD-Pad9)_7" "unconnected-(U2-~{STDBY}-Pad6)" "Net-(Boot1-Pad1)" "Net-(U3-VI)" "Net-(P1-CC)" "Net-(P1-VCONN)"
+    "Net-(P1-D+)" "unconnected-(P1-SHIELD-PadS1)" "Net-(U4-GPIO0{slash}BOOT)" "unconnected-(P1-SHIELD-PadS1)_1" "unconnected-(P1-SHIELD-PadS1)_2" "unconnected-(P1-SHIELD-PadS1)_3" "Net-(U4-GPIO6{slash}TOUCH6{slash}ADC1_CH5)" "Net-(U4-EN)"
+    "unconnected-(U4-MTDI{slash}GPIO41{slash}CLK_OUT1-Pad34)" "unconnected-(U4-GPIO17{slash}U1TXD{slash}ADC2_CH6-Pad10)" "unconnected-(U4-GPIO21-Pad23)" "unconnected-(U4-U0RXD{slash}GPIO44{slash}CLK_OUT2-Pad36)" "unconnected-(U4-SPIDQS{slash}GPIO37{slash}FSPIQ{slash}SUBSPIQ-Pad30)" "unconnected-(U4-GPIO46-Pad16)" "unconnected-(U4-GPIO45-Pad26)" "unconnected-(U4-GPIO8{slash}TOUCH8{slash}ADC1_CH7{slash}SUBSPICS1-Pad12)"
+    "unconnected-(U4-GPIO3{slash}TOUCH3{slash}ADC1_CH2-Pad15)" "unconnected-(U4-GPIO48{slash}SPICLK_N{slash}SUBSPICLK_N_DIFF-Pad25)" "unconnected-(U4-MTMS{slash}GPIO42-Pad35)" "unconnected-(U4-GPIO11{slash}TOUCH11{slash}ADC2_CH0{slash}FSPID{slash}FSPIIO5{slash}SUBSPID-Pad19)" "unconnected-(U4-GPIO47{slash}SPICLK_P{slash}SUBSPICLK_P_DIFF-Pad24)" "unconnected-(U4-GPIO13{slash}TOUCH13{slash}ADC2_CH2{slash}FSPIQ{slash}FSPIIO7{slash}SUBSPIQ-Pad21)" "unconnected-(U4-SPIIO6{slash}GPIO35{slash}FSPID{slash}SUBSPID-Pad28)" "unconnected-(U4-GPIO38{slash}FSPIWP{slash}SUBSPIWP-Pad31)"
+    "unconnected-(U4-GPIO1{slash}TOUCH1{slash}ADC1_CH0-Pad39)" "unconnected-(U4-MTDO{slash}GPIO40{slash}CLK_OUT2-Pad33)" "unconnected-(U4-GPIO9{slash}TOUCH9{slash}ADC1_CH8{slash}FSPIHD{slash}SUBSPIHD-Pad17)" "unconnected-(U4-GPIO18{slash}U1RXD{slash}ADC2_CH7{slash}CLK_OUT3-Pad11)" "unconnected-(U4-GPIO4{slash}TOUCH4{slash}ADC1_CH3-Pad4)" "unconnected-(U4-SPIIO7{slash}GPIO36{slash}FSPICLK{slash}SUBSPICLK-Pad29)" "unconnected-(U4-GPIO12{slash}TOUCH12{slash}ADC2_CH1{slash}FSPICLK{slash}FSPIIO6{slash}SUBSPICLK-Pad20)" "unconnected-(U4-GPIO14{slash}TOUCH14{slash}ADC2_CH3{slash}FSPIWP{slash}FSPIDQS{slash}SUBSPIWP-Pad22)"
+    "unconnected-(U4-MTCK{slash}GPIO39{slash}CLK_OUT3{slash}SUBSPICS1-Pad32)" "unconnected-(U4-GPIO15{slash}U0RTS{slash}ADC2_CH4{slash}XTAL_32K_P-Pad8)" "unconnected-(U4-U0TXD{slash}GPIO43{slash}CLK_OUT1-Pad37)" "unconnected-(U4-GPIO7{slash}TOUCH7{slash}ADC1_CH6-Pad7)" "unconnected-(U4-GPIO10{slash}TOUCH10{slash}ADC1_CH9{slash}FSPICS0{slash}FSPIIO4{slash}SUBSPICS0-Pad18)" "unconnected-(U4-GPIO16{slash}U0CTS{slash}ADC2_CH5{slash}XTAL_32K_N-Pad9)" "unconnected-(U4-GPIO5{slash}TOUCH5{slash}ADC1_CH4-Pad5)"
+    (clearance_class "kicad_default")
+    (via_rule "kicad_default")
+    (rule
+      (width 200.0)
+    )
+    (circuit 
+      (use_layer F.Cu In1.Cu In2.Cu B.Cu)
+    )
+  )
+)

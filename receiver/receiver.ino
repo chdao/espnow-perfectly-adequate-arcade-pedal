@@ -152,16 +152,41 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
     case MSG_PEDAL_EVENT: {
       int transmitterIndex = transmitterManager_findIndex(&transmitterManager, senderMAC);
       if (transmitterIndex >= 0) {
-        char keyToPress;
-        if (transmitterManager.transmitters[transmitterIndex].pedalMode == 0) {
-          keyToPress = (msg->key == '1') ? 'l' : 'r';
+        // Validate key based on pedal mode
+        uint8_t pedalMode = transmitterManager.transmitters[transmitterIndex].pedalMode;
+        bool validKey = false;
+        
+        if (pedalMode == 0) {
+          // DUAL pedal: key must be '1' or '2'
+          validKey = (msg->key == '1' || msg->key == '2');
+          if (!validKey) {
+            debugMonitor_print(&debugMonitor, "T%d: received invalid key '%c' (expected '1' or '2' for DUAL mode)", 
+                              transmitterIndex, msg->key);
+          }
         } else {
-          keyToPress = transmitterManager_getAssignedKey(&transmitterManager, transmitterIndex);
+          // SINGLE pedal: key must be '1'
+          validKey = (msg->key == '1');
+          if (!validKey) {
+            debugMonitor_print(&debugMonitor, "T%d: received invalid key '%c' (expected '1' for SINGLE mode)", 
+                              transmitterIndex, msg->key);
+          }
         }
-        debugMonitor_print(&debugMonitor, "T%d: '%c' %s", 
-                          transmitterIndex, keyToPress, msg->pressed ? "▼" : "▲");
+        
+        // Only process if key is valid
+        if (validKey) {
+          // Handle keyboard press immediately, before debug logging (which might block)
+          keyboardService_handlePedalEvent(&keyboardService, senderMAC, msg);
+          
+          char keyToPress;
+          if (pedalMode == 0) {
+            keyToPress = (msg->key == '1') ? 'l' : 'r';
+          } else {
+            keyToPress = transmitterManager_getAssignedKey(&transmitterManager, transmitterIndex);
+          }
+          debugMonitor_print(&debugMonitor, "T%d: '%c' %s", 
+                            transmitterIndex, keyToPress, msg->pressed ? "▼" : "▲");
+        }
       }
-      keyboardService_handlePedalEvent(&keyboardService, senderMAC, msg);
       break;
     }
     

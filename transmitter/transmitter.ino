@@ -16,6 +16,7 @@
 RTC_DATA_ATTR bool rtcPaired = false;
 RTC_DATA_ATTR uint8_t rtcReceiverMAC[6] = {0};
 RTC_DATA_ATTR uint8_t rtcPedalMode = 1;
+RTC_DATA_ATTR unsigned long rtcCumulativeTime = 0;  // Cumulative time since first boot (persists across deep sleep)
 
 // ============================================================================
 // CONFIGURATION
@@ -35,7 +36,7 @@ RTC_DATA_ATTR uint8_t rtcPedalMode = 1;
 #define IDLE_DELAY_UNPAIRED 200  // 200ms delay when not paired
 #define ACTIVITY_BOOST_DURATION 2000  // Keep responsive for 2 seconds after pedal press
 #define SERIAL_INIT_DELAY_MS 100
-#define HEARTBEAT_INTERVAL_MS 5000  // 5 seconds
+#define DEBUG_STATUS_INTERVAL_MS 5000  // 5 seconds - interval for debug status messages when not paired
 #define DEBUG_BUTTON_DEBOUNCE_MS 50  // Button debounce time
 
 // Domain layer instances
@@ -186,6 +187,10 @@ void goToDeepSleep() {
     rtcPedalMode = PEDAL_MODE;
   }
   
+  // Save cumulative timestamp before deep sleep
+  unsigned long currentElapsed = millis() - bootTime;
+  rtcCumulativeTime += currentElapsed;
+  
   if (debugEnabled) {
     if (rtcPaired) {
       debugPrint("Entering deep sleep (pairing saved to RTC)\n");
@@ -221,7 +226,15 @@ void setup() {
   // Reduce WiFi transmit power for better battery life (pedals are used close to receiver)
   esp_wifi_set_max_tx_power(40);  // Reduce from default 84 (20dBm) to 40 (10dBm)
   
+  // Restore cumulative timestamp from RTC memory if waking from deep sleep
+  // Otherwise start fresh (first boot or power cycle)
   bootTime = millis();
+  if (!wokeFromPedal) {
+    // First boot or power cycle - reset cumulative time
+    rtcCumulativeTime = 0;
+  }
+  // Note: rtcCumulativeTime is passed to debugMonitor_init and used for timestamp calculation
+  
   lastActivityTime = millis();
   
   // Initialize domain layer
@@ -238,11 +251,19 @@ void setup() {
   
   pedalReader_init(&pedalReader, PEDAL_1_PIN, PEDAL_2_PIN, PEDAL_MODE);
   
+  // If we woke from pedal press, initialize pedal reader state correctly
+  if (wokeFromPedal) {
+    // Pedal is already pressed, so set lastState to LOW to match current state
+    pedalReader.pedal1State.lastState = LOW;
+    pedalReader.pedal1State.debouncing = false;
+  }
+  
   // Initialize infrastructure layer
   espNowTransport_init(&transport);
   
   // Initialize debug monitor (needed before loading debug state)
   debugMonitor_init(&debugMonitor, &transport, transmitterSendWrapper, transmitterAddPeerWrapper, "[T]", bootTime);
+  debugMonitor.cumulativeTime = rtcCumulativeTime;  // Set cumulative time for timestamp calculation
   debugMonitor_load(&debugMonitor);
   debugMonitor.espNowInitialized = transport.initialized;
   
@@ -284,11 +305,14 @@ void setup() {
   pedalService_setPairingService(&pairingService);
   
   // If we restored pairing from RTC, add receiver as peer immediately
+  // Act as if we never disconnected - no delays, just send immediately
   if (pairingState.isPaired && wokeFromPedal) {
     espNowTransport_addPeer(&transport, pairingState.pairedReceiverMAC, 0);
     if (debugEnabled) {
       debugPrint("Restored pairing - receiver added as peer\n");
     }
+    // Minimal delay just for ESP-NOW peer registration (should be instant for already-paired devices)
+    delay(50);
   } else {
     // Broadcast that we're online (only if not restored from RTC)
     pairingService_broadcastOnline(&pairingService);
@@ -314,8 +338,9 @@ void setup() {
     
     // The pedal that woke us (PEDAL_1_PIN) is still pressed
     // Send the press event if we're paired
+    // Note: Always send '1' for pedal 1 - receiver will convert based on pedal mode
     if (pairingState_isPaired(&pairingState)) {
-      char key = (PEDAL_MODE == 0) ? '1' : 'l';
+      char key = '1';  // Always send '1' for pedal 1 - receiver handles conversion
       pedalService_sendPedalEvent(&pedalService, key, true);
       
       // Wait for pedal release (with timeout)
@@ -326,6 +351,11 @@ void setup() {
       
       // Send release event
       if (digitalRead(PEDAL_1_PIN) == HIGH) {
+        // Update pedal reader state FIRST so it doesn't detect this release as a new transition
+        // This prevents the pedal reader from sending a duplicate release event
+        pedalReader.pedal1State.lastState = HIGH;
+        pedalReader.pedal1State.debouncing = false;
+        
         pedalService_sendPedalEvent(&pedalService, key, false);
         if (debugEnabled) {
           debugPrint("Pedal released after wake\n");
@@ -399,10 +429,10 @@ void loop() {
   
   // Periodic status when not paired (only when debug enabled)
   if (debugEnabled) {
-    static unsigned long lastHeartbeat = 0;
-    if (!pairingState_isPaired(&pairingState) && (currentTime - lastHeartbeat > HEARTBEAT_INTERVAL_MS)) {
+    static unsigned long lastStatusLog = 0;
+    if (!pairingState_isPaired(&pairingState) && (currentTime - lastStatusLog > DEBUG_STATUS_INTERVAL_MS)) {
       debugPrint("Waiting for receiver...\n");
-      lastHeartbeat = currentTime;
+      lastStatusLog = currentTime;
     }
   }
   

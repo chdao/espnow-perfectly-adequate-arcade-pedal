@@ -27,6 +27,7 @@ typedef struct {
   DebugMonitor_SendFunc sendFunc;  // Function to send data
   DebugMonitor_AddPeerFunc addPeerFunc;  // Function to add peer
   unsigned long bootTime;
+  unsigned long cumulativeTime;  // Cumulative time across deep sleep cycles (for transmitter)
   bool espNowInitialized;
   unsigned long lastBeaconTime;  // Last time we saw a beacon from monitor
   bool statusSent;  // Track if status has been sent to prevent duplicates

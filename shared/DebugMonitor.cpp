@@ -25,6 +25,7 @@ void debugMonitor_init(DebugMonitor* monitor, void* transport,
   monitor->addPeerFunc = addPeerFunc;
   monitor->devicePrefix = devicePrefix;
   monitor->bootTime = bootTime;
+  monitor->cumulativeTime = 0;  // Default to 0 (receiver doesn't use this)
   monitor->paired = false;
   monitor->espNowInitialized = false;
   monitor->lastBeaconTime = 0;
@@ -135,14 +136,21 @@ void debugMonitor_print(DebugMonitor* monitor, const char* format, ...) {
   // Remove trailing newline from buffer (debug monitor handles line breaks)
   removeTrailingNewline(buffer);
   
-  // Format message with device prefix (MAC will be added by debug monitor from packet sender)
+  // Calculate time from boot in seconds
+  // For transmitter: add cumulativeTime to account for time before deep sleep
+  // For receiver: cumulativeTime is 0, so this is just (currentTime - bootTime)
+  unsigned long currentTime = millis();
+  float timeFromBoot = (monitor->cumulativeTime + (currentTime - monitor->bootTime)) / 1000.0f;
+  
+  // Format message with device prefix and timestamp (MAC will be added by debug monitor from packet sender)
   typedef struct __attribute__((packed)) {
     uint8_t msgType;
     char message[200];
   } debug_message;
   
   debug_message msg = {MSG_DEBUG, {0}};
-  int written = snprintf(msg.message, sizeof(msg.message), "%s %s", monitor->devicePrefix, buffer);
+  int written = snprintf(msg.message, sizeof(msg.message), "%s [%.3fs] %s", 
+                        monitor->devicePrefix, timeFromBoot, buffer);
   if (written >= sizeof(msg.message)) {
     msg.message[sizeof(msg.message) - 1] = '\0';  // Ensure null termination
   }
@@ -153,6 +161,10 @@ void debugMonitor_print(DebugMonitor* monitor, const char* format, ...) {
   // Always try to send - no timeout/disconnect logic
   // If send fails, we'll keep trying (monitor will reconnect via beacon)
   monitor->sendFunc(monitor->transport, monitor->mac, (uint8_t*)&msg, messageLen);
+  
+  // Small delay to prevent ESP-NOW from dropping messages sent in quick succession
+  // This helps prevent message fragmentation/corruption when multiple messages are sent rapidly
+  delay(5);
 }
 
 void debugMonitor_update(DebugMonitor* monitor, unsigned long currentTime) {

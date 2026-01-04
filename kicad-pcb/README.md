@@ -2,6 +2,20 @@
 
 KiCad project for a custom ESP32-based pedal PCB.
 
+## Images
+
+![Schematic](../docs/schema.png)
+*Complete schematic diagram*
+
+![PCB Routing](../docs/PCB_routing.png)
+*PCB layout and routing*
+
+![3D Render](../docs/3D_render.png)
+*3D visualization of the PCB*
+
+![FireBeetle 2 Reference](../docs/Firebeetle2.png)
+*Reference: FireBeetle 2 ESP32-E board (for comparison)*
+
 ## Specifications
 
 - **Board Size**: 215.9mm x 25.4mm (8.5" x 1")
@@ -115,19 +129,28 @@ Given the 215.9mm x 25.4mm constraint:
 
 ## Design Status
 
-⚠️ **IN PROGRESS** - Schematic and PCB layout files will be added.
+✅ **COMPLETE** - Schematic and PCB layout are complete. See images above for visual reference.
 
 ## Notes
 
-- This directory is git-ignored (see `.gitignore`)
 - KiCad 7.0 or later required
-- Standard KiCad symbol and footprint libraries needed
+- Custom Espressif symbol and footprint libraries included in this directory
+- Design files are tracked in git (temporary files excluded via `.gitignore`)
+
+## Design Files
+
+All design files are included in this directory:
+- `esp32-pedal-pcb.kicad_pro` - KiCad project file
+- `esp32-pedal-pcb.kicad_sch` - Schematic
+- `esp32-pedal-pcb.kicad_pcb` - PCB layout
+- `esp32-pedal-pcb.kicad_dru` - Design rules
+- `esp32-pedal-pcb.rules` - Custom design rules
 
 ## TODO
 
-- [ ] Complete schematic
-- [ ] Create PCB layout
-- [ ] Design rule check (DRC)
+- [x] Complete schematic
+- [x] Create PCB layout
+- [x] Design rule check (DRC)
 - [ ] Generate Gerber files
 - [ ] Create assembly drawings
 - [ ] Generate BOM

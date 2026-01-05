@@ -12,16 +12,15 @@ This document describes the pinout for the FireBeetle 2 ESP32-E development boar
 
 ## GPIO Pins Used in This Project
 
-### Pedal Switches
+### Left Pedal / Single Pedal
 - **GPIO 13** (D7): Used for LEFT pedal in dual mode, or single pedal in single pedal mode
   - Also functions as: ADC2_CH4, TOUCH4, RTC_GPIO14
   - Supports deep sleep wakeup
+
+### Right Pedal (Dual Mode Only)
 - **GPIO 14** (D6): Used for RIGHT pedal in dual mode
   - Also functions as: ADC2_CH6, TOUCH6, RTC_GPIO16
   - Supports deep sleep wakeup
-- **GPIO 21** (SDA): Used for pedal switch
-  - Also functions as: I2C SDA
-  - Note: GPIO21 is the I2C SDA pin, but can be used as a general-purpose GPIO for pedal input
 
 ### LED (Optional)
 - **GPIO 2** (D9): Used for status LED

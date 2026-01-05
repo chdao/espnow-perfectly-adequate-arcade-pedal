@@ -103,4 +103,3 @@ static inline int getSlotsNeeded(uint8_t pedalMode) {
 }
 
 #endif // MESSAGES_H
-

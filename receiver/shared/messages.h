@@ -97,5 +97,9 @@ static inline void macCopy(uint8_t* dst, const uint8_t* src) {
   *dst16 = *src16;
 }
 
-#endif // MESSAGES_H
+// Optimized slot calculation - inline for speed (shared utility)
+static inline int getSlotsNeeded(uint8_t pedalMode) {
+  return (pedalMode == 0) ? 2 : 1;
+}
 
+#endif // MESSAGES_H

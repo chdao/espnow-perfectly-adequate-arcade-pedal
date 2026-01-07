@@ -3,11 +3,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../shared/messages.h" // Corrected include path
-
-#define ESPNOW_INIT_RETRY_COUNT 3
-#define ESPNOW_INIT_RETRY_DELAY_MS 100
-#define ESPNOW_DEINIT_DELAY_MS 10
 
 // ESP-NOW transport abstraction
 typedef struct {

@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <string.h>
 #include <Arduino.h>
-#include "../shared/messages.h"
 
 void receiverPairingService_init(ReceiverPairingService* service, TransmitterManager* manager, 
                                   ReceiverEspNowTransport* transport, unsigned long bootTime) {
@@ -11,11 +10,7 @@ void receiverPairingService_init(ReceiverPairingService* service, TransmitterMan
   service->bootTime = bootTime;
   service->lastBeaconTime = 0;
   service->gracePeriodCheckDone = false;
-  // Fast zero using 32-bit and 16-bit writes
-  uint32_t* mac32 = (uint32_t*)service->pendingNewTransmitterMAC;
-  uint16_t* mac16 = (uint16_t*)(service->pendingNewTransmitterMAC + 4);
-  *mac32 = 0;
-  *mac16 = 0;
+  memset(service->pendingNewTransmitterMAC, 0, 6);
   service->waitingForAliveResponses = false;
   service->aliveResponseTimeout = 0;
   memset(service->transmitterResponded, false, sizeof(service->transmitterResponded));
@@ -23,11 +18,6 @@ void receiverPairingService_init(ReceiverPairingService* service, TransmitterMan
 
 void receiverPairingService_handleDiscoveryRequest(ReceiverPairingService* service, const uint8_t* txMAC, 
                                                     uint8_t pedalMode, uint8_t channel, unsigned long currentTime) {
-  // Validate MAC address
-  if (!isValidMAC(txMAC)) {
-    return;  // Invalid MAC address, ignore request
-  }
-  
   int knownIndex = transmitterManager_findIndex(service->manager, txMAC);
   bool isKnownTransmitter = (knownIndex >= 0);
   
@@ -50,7 +40,7 @@ void receiverPairingService_handleDiscoveryRequest(ReceiverPairingService* servi
     return;  // Receiver full
   }
   
-  int slotsNeeded = getSlotsNeeded(pedalMode);
+  int slotsNeeded = (pedalMode == 0) ? 2 : 1;
   if (!transmitterManager_hasFreeSlots(service->manager, slotsNeeded)) {
     return;  // Not enough slots
   }
@@ -61,17 +51,11 @@ void receiverPairingService_handleDiscoveryRequest(ReceiverPairingService* servi
   struct_message response = {MSG_DISCOVERY_RESP, 0, false, 0};
   if (receiverEspNowTransport_send(service->transport, txMAC, (uint8_t*)&response, sizeof(response))) {
     transmitterManager_add(service->manager, txMAC, pedalMode);
-    // Debug message will be sent from receiver.ino onMessageReceived
   }
 }
 
 void receiverPairingService_handleTransmitterOnline(ReceiverPairingService* service, const uint8_t* txMAC, 
                                                      uint8_t channel) {
-  // Validate MAC address
-  if (!isValidMAC(txMAC)) {
-    return;  // Invalid MAC address, ignore
-  }
-  
   int transmitterIndex = transmitterManager_findIndex(service->manager, txMAC);
   
   if (transmitterIndex >= 0) {
@@ -89,7 +73,7 @@ void receiverPairingService_handleTransmitterOnline(ReceiverPairingService* serv
   } else {
     // Unknown transmitter - if receiver is full, try to replace unresponsive transmitters
     if (service->manager->slotsUsed >= MAX_PEDAL_SLOTS) {
-      macCopy(service->pendingNewTransmitterMAC, txMAC);
+      memcpy(service->pendingNewTransmitterMAC, txMAC, 6);
       
       // Ping all paired transmitters
       struct_message ping = {MSG_ALIVE, 0, false, 0};
@@ -114,7 +98,7 @@ void receiverPairingService_handleTransmitterPaired(ReceiverPairingService* serv
   WiFi.macAddress(ourMAC);
   
   int transmitterIndex = transmitterManager_findIndex(service->manager, txMAC);
-  bool pairedWithUs = macEqual(rxMAC, ourMAC);
+  bool pairedWithUs = (memcmp(rxMAC, ourMAC, 6) == 0);
   
   if (transmitterIndex >= 0 && !pairedWithUs) {
     // Transmitter paired with another receiver - remove it
@@ -209,7 +193,7 @@ void receiverPairingService_update(ReceiverPairingService* service, unsigned lon
     // Send MSG_ALIVE to new transmitter if we have free slots
     uint8_t broadcastMAC[] = BROADCAST_MAC;
     if (service->manager->slotsUsed < MAX_PEDAL_SLOTS && 
-        !macEqual(service->pendingNewTransmitterMAC, broadcastMAC)) {
+        memcmp(service->pendingNewTransmitterMAC, broadcastMAC, 6) != 0) {
       receiverEspNowTransport_addPeer(service->transport, service->pendingNewTransmitterMAC, 0);
       
       struct_message alive = {MSG_ALIVE, 0, false, 0};
@@ -219,11 +203,7 @@ void receiverPairingService_update(ReceiverPairingService* service, unsigned lon
     
     // Clear replacement state
     service->waitingForAliveResponses = false;
-    // Fast zero using 32-bit and 16-bit writes
-    uint32_t* mac32 = (uint32_t*)service->pendingNewTransmitterMAC;
-    uint16_t* mac16 = (uint16_t*)(service->pendingNewTransmitterMAC + 4);
-    *mac32 = 0;
-    *mac16 = 0;
+    memset(service->pendingNewTransmitterMAC, 0, 6);
     service->aliveResponseTimeout = 0;
   }
 }

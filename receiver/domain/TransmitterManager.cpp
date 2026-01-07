@@ -1,7 +1,6 @@
 #include "TransmitterManager.h"
 #include <string.h>
 #include <Arduino.h>
-#include "../shared/messages.h"
 
 void transmitterManager_init(TransmitterManager* manager) {
   memset(manager->transmitters, 0, sizeof(manager->transmitters));
@@ -10,9 +9,8 @@ void transmitterManager_init(TransmitterManager* manager) {
 }
 
 int transmitterManager_findIndex(const TransmitterManager* manager, const uint8_t* mac) {
-  // Fast MAC comparison using optimized macEqual function
   for (int i = 0; i < manager->count; i++) {
-    if (macEqual(mac, manager->transmitters[i].mac)) {
+    if (memcmp(mac, manager->transmitters[i].mac, 6) == 0) {
       return i;
     }
   }
@@ -33,7 +31,7 @@ bool transmitterManager_add(TransmitterManager* manager, const uint8_t* mac, uin
     return false;  // Not enough slots
   }
   
-  macCopy(manager->transmitters[manager->count].mac, mac);
+  memcpy(manager->transmitters[manager->count].mac, mac, 6);
   manager->transmitters[manager->count].pedalMode = pedalMode;
   manager->transmitters[manager->count].seenOnBoot = true;
   manager->transmitters[manager->count].lastSeen = millis();

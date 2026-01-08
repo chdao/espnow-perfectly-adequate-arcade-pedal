@@ -15,8 +15,8 @@
 // CONFIGURATION
 // ============================================================================
 #define PEDAL_MODE_AUTO -1     // Auto-detect based on connected switches (recommended)
-#define PEDAL_MODE_DUAL 0      // Force dual pedal mode (GPIO7 & GPIO21)
-#define PEDAL_MODE_SINGLE 1    // Force single pedal mode (GPIO7 only)
+#define PEDAL_MODE_DUAL 0      // Force dual pedal mode (GPIO1 & GPIO2)
+#define PEDAL_MODE_SINGLE 1    // Force single pedal mode (GPIO1 only)
 #define PEDAL_MODE PEDAL_MODE_AUTO  // Change to PEDAL_MODE_DUAL or PEDAL_MODE_SINGLE to override auto-detection
 #define DEBUG_ENABLED 1  // Set to 0 to disable Serial output and save battery
 // ============================================================================
@@ -247,13 +247,13 @@ void setup() {
     detectedMode = detectPedalMode();
     #if DEBUG_ENABLED
     Serial.print("Auto-detected mode: ");
-    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
+    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO1 & GPIO2)" : "SINGLE (GPIO1)");
     #endif
   } else {
     // Manual override mode
     #if DEBUG_ENABLED
     Serial.print("Mode (manual override): ");
-    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
+    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO1 & GPIO2)" : "SINGLE (GPIO1)");
     #endif
   }
   

@@ -16,13 +16,18 @@ This directory contains the firmware for the **PanicPedal Pro** transmitter PCB.
 | GPIO4 | Battery STAT1 | MCP73871 battery charger |
 | GPIO5 | Switch Position 1 | 2-position switch (unused) |
 | GPIO6 | Switch Position 2 | 2-position switch (unused) |
-| GPIO7 | Foot Switch 1 | First pedal input |
-| GPIO21 | Foot Switch 2 | Second pedal input |
+| GPIO7 | Foot Switch 1 NO | First pedal normally-open contact |
+| GPIO21 | Foot Switch 2 NO | Second pedal normally-open contact |
+| GPIO45 | Foot Switch 1 NC | First pedal normally-closed contact (for detection) |
+| GPIO46 | Foot Switch 2 NC | Second pedal normally-closed contact (for detection) |
 
 ## Configuration
 
-- **Pedal Mode**: Single pedal (GPIO7) by default
-- **Dual Pedal Mode**: Set `PEDAL_MODE` to 0 to enable GPIO21 as second pedal
+- **Pedal Mode**: Auto-detected by default based on connected switches
+  - If both switches are connected: Dual pedal mode (GPIO7 & GPIO21)
+  - If only first switch is connected: Single pedal mode (GPIO7)
+  - Detection uses NC contacts (GPIO45 & GPIO46) to sense switch presence
+- **Manual Override**: Set `PEDAL_MODE` to `PEDAL_MODE_DUAL` (0) or `PEDAL_MODE_SINGLE` (1) to override auto-detection
 - **Deep Sleep Wakeup**: GPIO7 (LOW trigger)
 
 ## Building and Uploading
@@ -35,7 +40,12 @@ This directory contains the firmware for the **PanicPedal Pro** transmitter PCB.
 ## Notes
 
 - This code is specifically designed for the PanicPedal Pro PCB
-- Two foot switches are connected to GPIO7 and GPIO21
+- **Automatic Switch Detection**: The firmware automatically detects which switches are connected by reading the NC (normally-closed) contacts on GPIO45 and GPIO46
+  - No need to manually configure pedal mode - it's detected at boot
+  - If a switch is connected, its NC contact will read LOW
+  - This eliminates the need to hardcode pedal configuration
+- Two foot switches can be connected:
+  - First pedal: NO on GPIO7, NC on GPIO45
+  - Second pedal: NO on GPIO21, NC on GPIO46
 - Battery monitoring pins are available but not yet implemented in the firmware
 - LED control (GPIO2) is defined but not yet implemented
-- Set `PEDAL_MODE` to 0 for dual pedal mode or 1 for single pedal (GPIO7 only)

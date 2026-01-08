@@ -14,7 +14,10 @@
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-#define PEDAL_MODE 1  // 0=DUAL (GPIO7 & GPIO21), 1=SINGLE (GPIO7 only)
+#define PEDAL_MODE_AUTO -1     // Auto-detect based on connected switches (recommended)
+#define PEDAL_MODE_DUAL 0      // Force dual pedal mode (GPIO7 & GPIO21)
+#define PEDAL_MODE_SINGLE 1    // Force single pedal mode (GPIO7 only)
+#define PEDAL_MODE PEDAL_MODE_AUTO  // Change to PEDAL_MODE_DUAL or PEDAL_MODE_SINGLE to override auto-detection
 #define DEBUG_ENABLED 1  // Set to 0 to disable Serial output and save battery
 // ============================================================================
 
@@ -24,8 +27,10 @@
 #define BATTERY_STAT1_PIN 4    // Battery STAT1 from MCP73871
 #define SWITCH_POS1_PIN 5      // 2-position switch position 1 (unused)
 #define SWITCH_POS2_PIN 6      // 2-position switch position 2 (unused)
-#define PEDAL_1_PIN 7          // First foot switch
-#define PEDAL_2_PIN 21         // Second foot switch
+#define PEDAL_1_PIN 7          // First foot switch NO (normally open)
+#define PEDAL_2_PIN 21         // Second foot switch NO (normally open)
+#define PEDAL_1_NC_PIN 45      // First foot switch NC (normally closed) - for detection
+#define PEDAL_2_NC_PIN 46      // Second foot switch NC (normally closed) - for detection
 
 #define INACTIVITY_TIMEOUT 600000  // 10 minutes
 #define IDLE_DELAY_PAIRED 20  // 20ms delay when paired
@@ -48,6 +53,7 @@ unsigned long bootTime = 0;
 void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, uint8_t channel);
 void onPaired(const uint8_t* receiverMAC);
 void onActivity();
+uint8_t detectPedalMode();
 
 void onPaired(const uint8_t* receiverMAC) {
   #if DEBUG_ENABLED
@@ -173,6 +179,36 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
 }
 
 
+uint8_t detectPedalMode() {
+  // Configure NC pins as inputs with pull-ups to detect switch connections
+  pinMode(PEDAL_1_NC_PIN, INPUT_PULLUP);
+  pinMode(PEDAL_2_NC_PIN, INPUT_PULLUP);
+  
+  // Small delay to allow pins to stabilize
+  delay(10);
+  
+  // Read NC pins - LOW means switch is connected (NC contact is grounded)
+  bool pedal1Connected = (digitalRead(PEDAL_1_NC_PIN) == LOW);
+  bool pedal2Connected = (digitalRead(PEDAL_2_NC_PIN) == LOW);
+  
+  #if DEBUG_ENABLED
+  Serial.print("Pedal detection: Pedal 1=");
+  Serial.print(pedal1Connected ? "CONNECTED" : "NOT CONNECTED");
+  Serial.print(", Pedal 2=");
+  Serial.println(pedal2Connected ? "CONNECTED" : "NOT CONNECTED");
+  #endif
+  
+  // Determine mode based on detected switches
+  if (pedal1Connected && pedal2Connected) {
+    return PEDAL_MODE_DUAL;
+  } else if (pedal1Connected) {
+    return PEDAL_MODE_SINGLE;
+  } else {
+    // Default to single mode if no switches detected (fallback)
+    return PEDAL_MODE_SINGLE;
+  }
+}
+
 void goToDeepSleep() {
   #if DEBUG_ENABLED
   Serial.println("Going to deep sleep...");
@@ -186,8 +222,6 @@ void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.println("ESP-NOW Pedal Transmitter - PanicPedal Pro");
-  Serial.print("Mode: ");
-  Serial.println(PEDAL_MODE == 0 ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
   #endif
 
   // Battery optimization
@@ -197,9 +231,24 @@ void setup() {
   bootTime = millis();
   lastActivityTime = millis();
   
+  // Detect pedal mode if auto-detection is enabled
+  uint8_t detectedMode = PEDAL_MODE;
+  if (PEDAL_MODE == PEDAL_MODE_AUTO) {
+    detectedMode = detectPedalMode();
+    #if DEBUG_ENABLED
+    Serial.print("Auto-detected mode: ");
+    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
+    #endif
+  } else {
+    #if DEBUG_ENABLED
+    Serial.print("Mode: ");
+    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
+    #endif
+  }
+  
   // Initialize domain layer
   pairingState_init(&pairingState);
-  pedalReader_init(&pedalReader, PEDAL_1_PIN, PEDAL_2_PIN, PEDAL_MODE);
+  pedalReader_init(&pedalReader, PEDAL_1_PIN, PEDAL_2_PIN, detectedMode);
   
   // Initialize infrastructure layer
   espNowTransport_init(&transport);
@@ -210,7 +259,7 @@ void setup() {
   espNowTransport_registerReceiveCallback(&transport, onMessageReceived);
   
   // Initialize application layer
-  pairingService_init(&pairingService, &pairingState, &transport, PEDAL_MODE, bootTime);
+  pairingService_init(&pairingService, &pairingState, &transport, detectedMode, bootTime);
   pairingService.onPaired = onPaired;
   
   pedalService_init(&pedalService, &pedalReader, &pairingState, &transport, &lastActivityTime);

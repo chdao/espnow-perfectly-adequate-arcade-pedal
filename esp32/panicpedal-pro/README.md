@@ -16,11 +16,12 @@ This directory contains the firmware for the **PanicPedal Pro** transmitter PCB.
 | GPIO4 | Battery STAT1 | MCP73871 battery charger |
 | GPIO5 | Switch Position 1 | 2-position switch (unused) |
 | GPIO6 | Switch Position 2 | 2-position switch (unused) |
-| GPIO7 | Foot Switch | Main pedal input |
+| GPIO7 | Foot Switch 1 | First pedal input |
+| GPIO21 | Foot Switch 2 | Second pedal input |
 
 ## Configuration
 
-- **Pedal Mode**: Single pedal (GPIO7)
+- **Pedal Mode**: Dual pedal (GPIO7 & GPIO21)
 - **Deep Sleep Wakeup**: GPIO7 (LOW trigger)
 
 ## Building and Uploading
@@ -33,6 +34,7 @@ This directory contains the firmware for the **PanicPedal Pro** transmitter PCB.
 ## Notes
 
 - This code is specifically designed for the PanicPedal Pro PCB
-- The foot switch is connected to GPIO7
+- Two foot switches are connected to GPIO7 and GPIO21
 - Battery monitoring pins are available but not yet implemented in the firmware
 - LED control (GPIO2) is defined but not yet implemented
+- Set `PEDAL_MODE` to 0 for dual pedal mode or 1 for single pedal (GPIO7 only)

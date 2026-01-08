@@ -14,7 +14,7 @@
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-#define PEDAL_MODE 1  // 0=DUAL, 1=SINGLE (GPIO7 only)
+#define PEDAL_MODE 0  // 0=DUAL (GPIO7 & GPIO21), 1=SINGLE (GPIO7 only)
 #define DEBUG_ENABLED 1  // Set to 0 to disable Serial output and save battery
 // ============================================================================
 
@@ -24,8 +24,8 @@
 #define BATTERY_STAT1_PIN 4    // Battery STAT1 from MCP73871
 #define SWITCH_POS1_PIN 5      // 2-position switch position 1 (unused)
 #define SWITCH_POS2_PIN 6      // 2-position switch position 2 (unused)
-#define PEDAL_1_PIN 7          // Foot switch
-#define PEDAL_2_PIN 14         // Not used (single pedal mode)
+#define PEDAL_1_PIN 7          // First foot switch
+#define PEDAL_2_PIN 21         // Second foot switch
 
 #define INACTIVITY_TIMEOUT 600000  // 10 minutes
 #define IDLE_DELAY_PAIRED 20  // 20ms delay when paired
@@ -187,7 +187,7 @@ void setup() {
   delay(100);
   Serial.println("ESP-NOW Pedal Transmitter - PanicPedal Pro");
   Serial.print("Mode: ");
-  Serial.println(PEDAL_MODE == 0 ? "DUAL" : "SINGLE");
+  Serial.println(PEDAL_MODE == 0 ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
   #endif
 
   // Battery optimization

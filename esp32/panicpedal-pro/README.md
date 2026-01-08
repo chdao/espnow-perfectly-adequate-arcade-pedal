@@ -23,36 +23,23 @@ This directory contains the firmware for the **PanicPedal Pro** transmitter PCB.
 
 ## Configuration
 
-- **Pedal Mode**: Auto-detected on first boot and stored in NVRAM
-  - Detection runs on first boot or when firmware version changes
-  - Detected mode is stored in NVS (Non-Volatile Storage) along with firmware version
-  - If firmware version in code changes, detection will run again automatically
+- **Pedal Mode**: Auto-detected on every boot
+  - Detection runs automatically on every boot to ensure correct configuration
   - If both switches are connected: Dual pedal mode (GPIO7 & GPIO21)
   - If only first switch is connected: Single pedal mode (GPIO7)
   - Detection uses NC contacts (GPIO45 & GPIO46) to sense switch presence
-  - To force re-detection: Increment `FIRMWARE_VERSION` in code or clear NVS manually
+  - No NVS storage - always detects fresh on boot for maximum reliability
 - **Manual Override**: Set `PEDAL_MODE` to `PEDAL_MODE_DUAL` (0) or `PEDAL_MODE_SINGLE` (1) to override auto-detection
 - **Deep Sleep Wakeup**: GPIO7 (LOW trigger)
 
 ## Building and Uploading
 
-### Using Git Commit Hash as Version (Recommended)
+1. Open `panicpedal-pro.ino` in Arduino IDE
+2. Select your ESP32-S3 board from the board manager
+3. Configure upload settings for your ESP32-S3-WROOM module
+4. Upload the sketch
 
-1. **Generate version header** (run before building):
-   - **Windows**: Run `get_version.ps1` in PowerShell
-   - **Linux/Mac**: Run `get_version.sh` (make it executable: `chmod +x get_version.sh`)
-   - This generates `version.h` with the current git commit hash
-
-2. Open `panicpedal-pro.ino` in Arduino IDE
-3. Select your ESP32-S3 board from the board manager
-4. Configure upload settings for your ESP32-S3-WROOM module
-5. Upload the sketch
-
-**Note**: The firmware version will automatically be set to the git commit hash. If `version.h` doesn't exist, it falls back to the manual version defined in the code.
-
-### Manual Version (Alternative)
-
-If you prefer not to use git commit hash, you can manually update `FIRMWARE_VERSION` in the code. Detection will run whenever the version changes.
+**Note**: Pedal detection runs automatically on every boot - no configuration needed!
 
 ## Notes
 

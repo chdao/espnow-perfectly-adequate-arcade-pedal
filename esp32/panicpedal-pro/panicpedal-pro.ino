@@ -2,6 +2,7 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include "esp_wifi.h"
+#include <Preferences.h>
 
 // Clean Architecture: Include shared and domain modules
 #include "shared/messages.h"
@@ -48,6 +49,11 @@ PedalService pedalService;
 // System state
 unsigned long lastActivityTime = 0;
 unsigned long bootTime = 0;
+
+// NVS storage for pedal mode
+Preferences preferences;
+#define NVS_NAMESPACE "pedal"
+#define NVS_KEY_PEDAL_MODE "mode"
 
 // Forward declarations
 void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, uint8_t channel);
@@ -199,14 +205,40 @@ uint8_t detectPedalMode() {
   #endif
   
   // Determine mode based on detected switches
+  uint8_t detectedMode;
   if (pedal1Connected && pedal2Connected) {
-    return PEDAL_MODE_DUAL;
+    detectedMode = PEDAL_MODE_DUAL;
   } else if (pedal1Connected) {
-    return PEDAL_MODE_SINGLE;
+    detectedMode = PEDAL_MODE_SINGLE;
   } else {
     // Default to single mode if no switches detected (fallback)
-    return PEDAL_MODE_SINGLE;
+    detectedMode = PEDAL_MODE_SINGLE;
   }
+  
+  // Store detected mode in NVS so it persists across reboots
+  preferences.begin(NVS_NAMESPACE, false);
+  preferences.putUChar(NVS_KEY_PEDAL_MODE, detectedMode);
+  preferences.end();
+  
+  #if DEBUG_ENABLED
+  Serial.print("Stored pedal mode in NVS: ");
+  Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL" : "SINGLE");
+  #endif
+  
+  return detectedMode;
+}
+
+uint8_t loadPedalModeFromNVS() {
+  preferences.begin(NVS_NAMESPACE, true);  // Read-only mode
+  uint8_t storedMode = preferences.getUChar(NVS_KEY_PEDAL_MODE, 255);  // 255 = not found
+  preferences.end();
+  
+  if (storedMode == 255) {
+    // No stored value found
+    return 255;
+  }
+  
+  return storedMode;
 }
 
 void goToDeepSleep() {
@@ -231,17 +263,32 @@ void setup() {
   bootTime = millis();
   lastActivityTime = millis();
   
-  // Detect pedal mode if auto-detection is enabled
+  // Determine pedal mode
   uint8_t detectedMode = PEDAL_MODE;
+  
   if (PEDAL_MODE == PEDAL_MODE_AUTO) {
-    detectedMode = detectPedalMode();
-    #if DEBUG_ENABLED
-    Serial.print("Auto-detected mode: ");
-    Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
-    #endif
+    // Check NVS first - if stored value exists, use it
+    uint8_t storedMode = loadPedalModeFromNVS();
+    
+    if (storedMode != 255) {
+      // Use stored mode from NVS
+      detectedMode = storedMode;
+      #if DEBUG_ENABLED
+      Serial.print("Loaded pedal mode from NVS: ");
+      Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
+      #endif
+    } else {
+      // No stored value - run detection and store it
+      detectedMode = detectPedalMode();
+      #if DEBUG_ENABLED
+      Serial.print("Auto-detected mode (first boot): ");
+      Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
+      #endif
+    }
   } else {
+    // Manual override mode
     #if DEBUG_ENABLED
-    Serial.print("Mode: ");
+    Serial.print("Mode (manual override): ");
     Serial.println(detectedMode == PEDAL_MODE_DUAL ? "DUAL (GPIO7 & GPIO21)" : "SINGLE (GPIO7)");
     #endif
   }

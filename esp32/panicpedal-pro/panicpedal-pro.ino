@@ -22,15 +22,16 @@
 // ============================================================================
 
 // GPIO Pin Definitions (PanicPedal Pro - ESP32-S3-WROOM)
-#define PEDAL_1_PIN 1          // First foot switch NO (normally open)
-#define PEDAL_2_PIN 2          // Second foot switch NO (normally open)
+#define PEDAL_LEFT_NO_PIN 1    // Left pedal switch NO (normally open)
+#define PEDAL_RIGHT_NO_PIN 2   // Right pedal switch NO (normally open)
 #define BATTERY_VOLTAGE_PIN 3  // Battery voltage sensing (before TLV75733PDBV)
 #define BATTERY_STAT1_PIN 4    // STAT1/LBO from MCP73871 (charging status)
 #define SWITCH_POS1_PIN 5      // Single pole double throw switch position 1
 #define SWITCH_POS2_PIN 6      // Single pole double throw switch position 2
-#define LED_PIN 7              // Inolux_IN-PI554FCH LED DIN
-#define PEDAL_1_NC_PIN 28      // First foot switch NC (normally closed) - for detection
-#define PEDAL_2_NC_PIN 29      // Second foot switch NC (normally closed) - for detection
+#define LED_DIN_PIN 7          // APA102-2020 LED DIN
+#define LED_CLK_PIN 41         // APA102-2020 LED CLK
+#define PEDAL_LEFT_NC_PIN 35   // Left pedal switch NC (normally closed) - for detection
+#define PEDAL_RIGHT_NC_PIN 36  // Right pedal switch NC (normally closed) - for detection
 
 #define INACTIVITY_TIMEOUT 600000  // 10 minutes
 #define IDLE_DELAY_PAIRED 20  // 20ms delay when paired
@@ -181,15 +182,15 @@ void onMessageReceived(const uint8_t* senderMAC, const uint8_t* data, int len, u
 
 uint8_t detectPedalMode() {
   // Configure NC pins as inputs with pull-ups to detect switch connections
-  pinMode(PEDAL_1_NC_PIN, INPUT_PULLUP);
-  pinMode(PEDAL_2_NC_PIN, INPUT_PULLUP);
+  pinMode(PEDAL_LEFT_NC_PIN, INPUT_PULLUP);
+  pinMode(PEDAL_RIGHT_NC_PIN, INPUT_PULLUP);
   
   // Small delay to allow pins to stabilize
   delay(10);
   
   // Read NC pins - LOW means switch is connected (NC contact is grounded)
-  bool pedal1Connected = (digitalRead(PEDAL_1_NC_PIN) == LOW);
-  bool pedal2Connected = (digitalRead(PEDAL_2_NC_PIN) == LOW);
+  bool pedal1Connected = (digitalRead(PEDAL_LEFT_NC_PIN) == LOW);
+  bool pedal2Connected = (digitalRead(PEDAL_RIGHT_NC_PIN) == LOW);
   
   #if DEBUG_ENABLED
   Serial.print("Pedal detection: Pedal 1=");
@@ -221,7 +222,7 @@ void goToDeepSleep() {
   #if DEBUG_ENABLED
   Serial.println("Going to deep sleep...");
   #endif
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)PEDAL_1_PIN, LOW);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PEDAL_LEFT_NO_PIN, LOW);
   esp_deep_sleep_start();
 }
 
@@ -259,7 +260,7 @@ void setup() {
   
   // Initialize domain layer
   pairingState_init(&pairingState);
-  pedalReader_init(&pedalReader, PEDAL_1_PIN, PEDAL_2_PIN, detectedMode);
+  pedalReader_init(&pedalReader, PEDAL_LEFT_NO_PIN, PEDAL_RIGHT_NO_PIN, detectedMode);
   
   // Initialize infrastructure layer
   espNowTransport_init(&transport);
